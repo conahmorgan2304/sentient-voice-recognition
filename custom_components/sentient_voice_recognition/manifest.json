@@ -6,8 +6,11 @@
   "dependencies": [
     "conversation",
     "file_upload",
+    "frontend",
     "network",
-    "stt"
+    "panel_custom",
+    "stt",
+    "websocket_api"
   ],
   "documentation": "https://github.com/conahmorgan2304/sentient-voice-recognition",
   "domain": "sentient_voice_recognition",
@@ -16,5 +19,5 @@
   "issue_tracker": "https://github.com/conahmorgan2304/sentient-voice-recognition/issues",
   "name": "Sentient Voice Recognition",
   "requirements": [],
-  "version": "0.2.2"
+  "version": "0.2.3"
 }

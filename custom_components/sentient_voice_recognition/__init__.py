@@ -1,16 +1,25 @@
 """Home Assistant integration for local speaker identification."""
 
+from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_ENGINE_INSTALL, CONF_TOKEN
+from .const import CONF_ENGINE_INSTALL, CONF_TOKEN, RECORDER_PATH
+from .recorder import async_register_recorder, async_setup_recorder
 from .recognition import EngineClient, engine_url
 from .runtime import Runtime, profile_store
 
 type VoiceRecognitionEntry = ConfigEntry[Runtime]
 PLATFORMS = (Platform.STT, Platform.CONVERSATION)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the recorder's assets and API."""
+    await async_setup_recorder(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: VoiceRecognitionEntry) -> bool:
@@ -26,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoiceRecognitionEntry) -
 
     entry.runtime_data = runtime
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_register_recorder(hass)
     return True
 
 
@@ -34,6 +44,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: VoiceRecognitionEntry) 
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     await entry.runtime_data.async_close()
+    frontend.async_remove_panel(hass, RECORDER_PATH)
     return True
 
 

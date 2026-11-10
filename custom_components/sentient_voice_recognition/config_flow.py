@@ -34,8 +34,10 @@ from .const import (
     CONF_TOKEN,
     DEFAULT_THRESHOLD,
     DOMAIN,
+    ENROLLMENT_PROMPTS,
     ENGINE_INSTALL_LOCAL,
     ENGINE_INSTALL_REPOSITORY,
+    RECORDER_PATH,
     TITLE,
 )
 from .recognition import EngineClient, engine_url, valid_token
@@ -153,7 +155,7 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
     async def async_step_profiles(self, user_input=None) -> ConfigFlowResult:
         if self.config_entry.state is not ConfigEntryState.LOADED:
             return self.async_abort(reason="not_loaded")
-        menu = ["enroll"]
+        menu = ["record", "enroll"]
         profiles = self.config_entry.runtime_data.profiles
         if profiles:
             menu.extend(("test", "rename", "retrain", "delete"))
@@ -161,6 +163,12 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
             step_id="profiles",
             menu_options=menu,
             description_placeholders={"count": str(len(profiles))},
+        )
+
+    async def async_step_record(self, user_input=None) -> ConfigFlowResult:
+        """Open the microphone recorder from the profile options."""
+        return self.async_abort(
+            reason="open_recorder", description_placeholders={"recorder_path": f"/{RECORDER_PATH}"}
         )
 
     def _profile_selector(self, *, for_test: bool = False) -> SelectSelector:
@@ -250,6 +258,7 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(schema, suggested),
             errors=errors,
+            description_placeholders=dict(zip(_SAMPLE_FIELDS, ENROLLMENT_PROMPTS, strict=True)),
         )
 
     async def async_step_rename(self, user_input=None) -> ConfigFlowResult:

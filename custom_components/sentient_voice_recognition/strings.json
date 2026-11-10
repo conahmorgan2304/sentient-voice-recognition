@@ -56,7 +56,7 @@
       },
       "enroll": {
         "title": "Add a person",
-        "description": "Record each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “Could you turn on the living room lamp and tell me what the weather will be like tomorrow?”\n2. “I'd like to know how warm it is upstairs before I open the bedroom window for a while.”\n3. “Please check whether the back door is closed, then tell me if any lights are still on downstairs.”",
+        "description": "Record each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “{sample_one}”\n2. “{sample_two}”\n3. “{sample_three}”",
         "data": {
           "name": "Display name",
           "sample_one": "First WAV sample",
@@ -77,16 +77,17 @@
         "title": "Voice profiles",
         "description": "{count} people enrolled. Create one profile per person.",
         "menu_options": {
-          "enroll": "Add a person",
+          "enroll": "Upload three WAV files",
           "test": "Test a recording",
           "rename": "Rename a profile",
           "retrain": "Replace a person's samples",
-          "delete": "Delete a profile"
+          "delete": "Delete a profile",
+          "record": "Record with microphone"
         }
       },
       "retrain": {
         "title": "Replace a person's samples",
-        "description": "Choose a person and make three fresh recordings. Saving them keeps the same speaker ID.\n\nRecord each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “Could you turn on the living room lamp and tell me what the weather will be like tomorrow?”\n2. “I'd like to know how warm it is upstairs before I open the bedroom window for a while.”\n3. “Please check whether the back door is closed, then tell me if any lights are still on downstairs.”",
+        "description": "Choose a person and make three fresh recordings. Saving them keeps the same speaker ID.\n\nRecord each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “{sample_one}”\n2. “{sample_two}”\n3. “{sample_three}”",
         "data": {
           "profile": "Person",
           "sample_one": "First WAV sample",
@@ -144,7 +145,8 @@
       "no_profiles": "Enroll a person first.",
       "test_complete": "**Voice test complete**\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
       "test_passed": "**Voice test passed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
-      "test_failed": "**Voice test failed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}"
+      "test_failed": "**Voice test failed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
+      "open_recorder": "[Open the microphone recorder]({recorder_path}). Use Home Assistant over HTTPS, then allow microphone access when asked."
     }
   },
   "selector": {

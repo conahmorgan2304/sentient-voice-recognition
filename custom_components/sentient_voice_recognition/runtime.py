@@ -147,8 +147,6 @@ class Runtime:
                     raise ProfileError(invalid_sample, index) from err
                 if not audio or len(audio) > MAX_WAV_BYTES:
                     raise ProfileError(invalid_sample, index)
-                if audio in files:
-                    raise ProfileError("sample_duplicate", index)
                 files.append(audio)
             return tuple(files)
 
@@ -169,8 +167,6 @@ class Runtime:
         return profile
 
     async def _async_embed_uploads(self, files: tuple[str, ...]) -> list[Vector]:
-        if self._recognizing:
-            raise ProfileError("engine_busy")
         invalid_sample = "bad_samples" if len(files) > 1 else "bad_test_sample"
         try:
             samples = await self.hass.async_add_executor_job(self._read_uploads, files)
@@ -178,24 +174,38 @@ class Runtime:
             raise
         except (ValueError, OSError) as err:
             raise ProfileError(invalid_sample) from err
+        return await self._async_embed_samples(samples)
+
+    async def _async_embed_samples(self, samples: tuple[bytes, ...]) -> list[Vector]:
+        if self._recognizing:
+            raise ProfileError("engine_busy")
         vectors = []
         try:
             for index, sample in enumerate(samples):
+                if sample in samples[:index]:
+                    raise ProfileError("sample_duplicate", index)
                 vectors.append(await self.engine.async_embed(sample, wav=True))
         except EngineBusy as err:
             raise ProfileError("engine_busy") from err
         except BadSample as err:
             code = "sample_unusable" if len(samples) > 1 else "bad_test_sample"
             raise ProfileError(code, index) from err
+        except ProfileError:
+            raise
         except (TimeoutError, aiohttp.ClientError, ValueError, KeyError, TypeError) as err:
             raise ProfileError("engine_unavailable") from err
         return vectors
 
     async def async_enroll(
-        self, name: str, files: tuple[str, ...], *, speaker_id: str | None = None
+        self,
+        name: str,
+        files: tuple[str, ...] = (),
+        *,
+        speaker_id: str | None = None,
+        recordings: tuple[bytes, ...] | None = None,
     ) -> None:
         """Create a profile or replace its template while retaining its ID."""
-        if len(files) != 3:
+        if len(files if recordings is None else recordings) != 3:
             raise ProfileError("bad_samples")
         for index, file_id in enumerate(files):
             if file_id in files[:index]:
@@ -207,7 +217,11 @@ class Runtime:
             elif len(self.profiles) >= MAX_PROFILES:
                 raise ProfileError("profile_limit")
             name = self._check_name(name, speaker_id)
-            vectors = await self._async_embed_uploads(files)
+            vectors = (
+                await self._async_embed_uploads(files)
+                if recordings is None
+                else await self._async_embed_samples(recordings)
+            )
             for index, vector in enumerate(vectors):
                 for other in vectors[:index]:
                     score = cosine(vector, other)

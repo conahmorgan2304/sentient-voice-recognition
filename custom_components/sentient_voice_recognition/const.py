@@ -12,6 +12,13 @@ EVENT_IDENTIFIED = f"{DOMAIN}_turn"
 SAMPLE_RATE = 16_000
 MAX_CAPTURE_BYTES = SAMPLE_RATE * 2 * 12
 MAX_PROFILES = 16
+RECORDER_PATH = "sentient-voice-enrollment"
+RECORDER_SECONDS = 10
+ENROLLMENT_PROMPTS = (
+    "Could you turn on the living room lamp and tell me what the weather will be like tomorrow?",
+    "I'd like to know how warm it is upstairs before I open the bedroom window for a while.",
+    "Please check whether the back door is closed, then tell me if any lights are still on downstairs.",
+)
 
 CONF_TOKEN = "engine_token"
 CONF_ENGINE_INSTALL = "engine_install"
