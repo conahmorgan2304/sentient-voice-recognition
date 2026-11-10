@@ -86,3 +86,9 @@ Voice Recognition supplies identity for a single turn. Sentient's own conversati
 [Home Assistant Assist pipeline documentation](https://contributors.home-assistant.io/core/internals/assist-pipelines/)  
 [Sherpa-ONNX speaker identification models](https://k2-fsa.github.io/sherpa/onnx/speaker-identification/)  
 [3D-Speaker model project](https://github.com/modelscope/3D-Speaker)
+
+## Development
+
+Run the tests with `pip install pytest-homeassistant-custom-component && pytest -q`. They cover the engine endpoint (authentication, size limits, error mapping) and the per-turn speaker lookup, without needing the voice models. The Validate workflow also runs hassfest and HACS checks.
+
+Licence: MIT.
