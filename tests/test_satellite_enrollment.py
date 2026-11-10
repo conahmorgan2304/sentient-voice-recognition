@@ -114,3 +114,11 @@ async def test_conversation_answers_with_the_next_sentence_and_does_not_forward(
         result = await agent.async_process(request)
     forward.assert_not_called()
     assert SENTENCES[1] in result.response.speech["plain"]["speech"] and result.continue_conversation
+
+
+async def test_distinctness_names_the_nearest_other_voice(runtime):
+    runtime.start_satellite_enrollment("Alex")
+    for i in range(3):
+        await runtime.async_satellite_take(take(i + 1))
+    out = runtime.distinctness()
+    assert out == [{"name": "Alex", "nearest": None, "nearest_score": None}]
