@@ -15,6 +15,7 @@ from homeassistant.helpers.storage import Store
 import aiohttp
 
 from .const import DOMAIN, MAX_PROFILES, MAX_WAV_BYTES
+from .satellite import MIN_TAKE_BYTES, SENTENCES, WINDOW_SECONDS, SatelliteEnrollment, pcm_to_wav
 from .recognition import (
     BadSample, EngineBusy, EngineClient, Match, Vector, cosine, identify, normalized,
 )
@@ -38,6 +39,7 @@ class PendingTurn:
     digest: bytes
     expires: float
     match: Match
+    audio: bytes | None = None
 
 
 class TurnHandoff:
@@ -50,13 +52,13 @@ class TurnHandoff:
         if (task := asyncio.current_task()) is not None:
             self._pending.pop(task, None)
 
-    def offer(self, text: str, match: Match) -> None:
+    def offer(self, text: str, match: Match, audio: bytes | None = None) -> None:
         if (task := asyncio.current_task()) is not None:
             self._pending[task] = PendingTurn(
-                id(text), sha256(text.encode("utf-8", "surrogatepass")).digest(), monotonic() + HANDOFF_SECONDS, match
+                id(text), sha256(text.encode("utf-8", "surrogatepass")).digest(), monotonic() + HANDOFF_SECONDS, match, audio
             )
 
-    def consume(self, text: str) -> Match | None:
+    def consume_turn(self, text: str) -> PendingTurn | None:
         task = asyncio.current_task()
         if task is None or (turn := self._pending.pop(task, None)) is None:
             return None
@@ -66,7 +68,11 @@ class TurnHandoff:
             or turn.digest != sha256(text.encode("utf-8", "surrogatepass")).digest()
         ):
             return None
-        return turn.match
+        return turn
+
+    def consume(self, text: str) -> Match | None:
+        turn = self.consume_turn(text)
+        return None if turn is None else turn.match
 
 
 class ProfileError(ValueError):
@@ -95,6 +101,7 @@ class Runtime:
         self._closed = False
         self._recognizing = False
         self._retry_at = 0.0
+        self.enrollment: SatelliteEnrollment | None = None
 
     async def async_load(self) -> None:
         """Load profiles created for the current speaker model."""
@@ -237,6 +244,57 @@ class Runtime:
                 raise ProfileError("duplicate_voice")
             key = speaker_id or uuid4().hex
             await self._async_save({**self.profiles, key: Profile(name, vector)})
+
+    # ----- enrolling from a speaker --------------------------------------------------------------------------
+    @property
+    def enrolling(self) -> bool:
+        """A speaker enrolment is open (it closes by itself after a few minutes)."""
+        if self.enrollment is not None and self.enrollment.expires < monotonic():
+            self.enrollment = None
+        return self.enrollment is not None
+
+    def start_satellite_enrollment(self, name: str) -> str:
+        """Open an enrolment: the next three long sentences spoken to a Voice Recognition speaker become the samples.
+
+        A name that already has a profile replaces that person's samples. Returns the first sentence to read."""
+        self._check_open()
+        name = name.strip()
+        existing = next((key for key, p in self.profiles.items() if p.name.casefold() == name.casefold()), None)
+        if existing is None:
+            if len(self.profiles) >= MAX_PROFILES:
+                raise ProfileError("profile_limit")
+            name = self._check_name(name, None)
+        else:
+            name = self.profiles[existing].name
+        self.enrollment = SatelliteEnrollment(name, existing, monotonic() + WINDOW_SECONDS)
+        return SENTENCES[0]
+
+    async def async_satellite_take(self, pcm: bytes) -> tuple[str, bool]:
+        """Take one spoken sample: returns what the speaker says next and whether to keep listening."""
+        if not self.enrolling:
+            return "That voice enrolment has ended. Start it again from the Sentient Voice Recognition settings.", False
+        e = self.enrollment
+        again = SENTENCES[len(e.takes)]
+        if len(pcm) < MIN_TAKE_BYTES:
+            return f"That was a little short. Please say it again: {again}", True
+        wav = pcm_to_wav(pcm)
+        try:
+            await self._async_embed_samples((wav,))
+        except ProfileError as err:
+            if err.args[0] in ("engine_busy", "engine_unavailable"):
+                return "I couldn't reach the voice engine for a moment. Please say it again.", True
+            return f"I couldn't hear enough clear speech. Please say it again: {again}", True
+        e.takes.append(wav)
+        if len(e.takes) < len(SENTENCES):
+            return f"Thanks. Now say: {SENTENCES[len(e.takes)]}", True
+        self.enrollment = None
+        try:
+            await self.async_enroll(e.name, speaker_id=e.speaker_id, recordings=tuple(e.takes))
+        except ProfileError as err:
+            _LOGGER.debug("Speaker enrolment failed: %s", err.args[0])
+            return ("That didn't quite work, because the three recordings didn't sound like the same person "
+                    "or matched another saved voice. Start it again from the settings."), False
+        return f"All done. I've saved {e.name}'s voice from this speaker.", False
 
     async def async_rename(self, speaker_id: str, name: str) -> None:
         """Change a display name without changing the speaker ID or template."""

@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import VoiceRecognitionEntry
 from .const import CONF_STT, CONF_THRESHOLD, DEFAULT_THRESHOLD, MAX_CAPTURE_BYTES, SAMPLE_RATE
 from .recognition import Match
+from .satellite import ENROLLING
 
 
 async def async_setup_entry(
@@ -85,6 +86,16 @@ class VoiceRecognitionSTT(stt.SpeechToTextEntity):
             and metadata.channel == 1
             and metadata.sample_rate == SAMPLE_RATE
         )
+        if supported and runtime.enrolling:
+            # a voice is being enrolled from this speaker: keep the audio for the sample and don't send it to a provider
+            pcm = bytearray()
+            async for chunk in stream:
+                remaining = MAX_CAPTURE_BYTES - len(pcm)
+                if remaining > 0:
+                    pcm.extend(chunk[:remaining])
+            text = "voice enrolment sample"
+            runtime.handoff.offer(text, Match(None, None, ENROLLING), bytes(pcm))
+            return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
         capture = supported and bool(runtime.profiles)
         audio = bytearray()
         threshold = self._entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)

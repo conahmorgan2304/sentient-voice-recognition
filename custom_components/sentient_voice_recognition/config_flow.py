@@ -157,7 +157,7 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
     async def async_step_profiles(self, user_input=None) -> ConfigFlowResult:
         if self.config_entry.state is not ConfigEntryState.LOADED:
             return self.async_abort(reason="not_loaded")
-        menu = ["record", "enroll"]
+        menu = ["record", "satellite", "enroll"]
         profiles = self.config_entry.runtime_data.profiles
         if profiles:
             menu.extend(("test", "rename", "retrain", "delete"))
@@ -165,6 +165,25 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
             step_id="profiles",
             menu_options=menu,
             description_placeholders={"count": str(len(profiles))},
+        )
+
+    async def async_step_satellite(self, user_input=None) -> ConfigFlowResult:
+        """Enrol a voice by speaking to a real speaker, so the profile matches how that speaker hears the person."""
+        if self.config_entry.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="not_loaded")
+        errors = {}
+        if user_input is not None:
+            try:
+                sentence = self.config_entry.runtime_data.start_satellite_enrollment(user_input["name"])
+            except ProfileError as err:
+                errors["name"] = err.args[0]
+            else:
+                return self.async_abort(
+                    reason="satellite_started",
+                    description_placeholders={"name": user_input["name"].strip(), "sentence": sentence},
+                )
+        return self.async_show_form(
+            step_id="satellite", data_schema=probatio.Schema({probatio.Required("name"): str}), errors=errors
         )
 
     async def async_step_record(self, user_input=None) -> ConfigFlowResult:
