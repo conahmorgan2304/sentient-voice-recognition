@@ -8,6 +8,7 @@ from homeassistant.exceptions import ConfigEntryError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import CONF_ENGINE_INSTALL, CONF_THRESHOLD, CONF_TOKEN, DEFAULT_THRESHOLD, DOMAIN, RECORDER_PATH
 from .recorder import async_register_recorder, async_setup_recorder
@@ -33,8 +34,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         raise ServiceValidationError("Sentient Voice Recognition isn't running.")
 
     async def start_enrolment(call: ServiceCall) -> dict:
+        if not call.data["consent"]:
+            raise ServiceValidationError("Confirm that the person agreed to enrol their voice.")
         try:
-            sentence = runtime().start_satellite_enrollment(call.data["name"])
+            sentence = runtime().start_satellite_enrollment(call.data["name"], call.data["satellite_id"])
         except ProfileError as err:
             raise ServiceValidationError(f"Can't start recording: {err.args[0].replace('_', ' ')}") from err
         return {"sentence": sentence, "minutes": WINDOW_SECONDS // 60}
@@ -59,14 +62,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             return
         raise ServiceValidationError("Sentient Voice Recognition isn't running.")
 
-    hass.services.async_register(DOMAIN, "status", status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
-    hass.services.async_register(
-        DOMAIN, "set_match_threshold", set_threshold,
+    async_register_admin_service(hass, DOMAIN, "status", status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    async_register_admin_service(
+        hass, DOMAIN, "set_match_threshold", set_threshold,
         schema=vol.Schema({vol.Required("value"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=0.9))}))
-    hass.services.async_register(
-        DOMAIN, "start_speaker_enrolment", start_enrolment,
-        schema=vol.Schema({vol.Required("name"): cv.string}), supports_response=SupportsResponse.ONLY)
-    hass.services.async_register(DOMAIN, "cancel_speaker_enrolment", cancel_enrolment, schema=vol.Schema({}))
+    async_register_admin_service(
+        hass, DOMAIN, "start_speaker_enrolment", start_enrolment,
+        schema=vol.Schema({
+            vol.Required("name"): cv.string,
+            vol.Required("satellite_id"): cv.entity_id,
+            vol.Required("consent"): bool,
+        }), supports_response=SupportsResponse.ONLY)
+    async_register_admin_service(hass, DOMAIN, "cancel_speaker_enrolment", cancel_enrolment, schema=vol.Schema({}))
     return True
 
 

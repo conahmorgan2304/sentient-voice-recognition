@@ -11,11 +11,12 @@ from custom_components.sentient_voice_recognition.const import ENGINE_DIMENSION,
 from custom_components.sentient_voice_recognition.conversation import VoiceRecognitionAgent
 from custom_components.sentient_voice_recognition.recognition import BadSample, Match
 from custom_components.sentient_voice_recognition.runtime import ProfileError, Runtime
-from custom_components.sentient_voice_recognition.satellite import ENROLLING, MIN_TAKE_BYTES, SENTENCES
+from custom_components.sentient_voice_recognition.satellite import MIN_TAKE_BYTES, SENTENCES
 from custom_components.sentient_voice_recognition.stt import VoiceRecognitionSTT
 
 from tests.test_stt_parallel import META
 
+SATELLITE = "assist_satellite.kitchen"
 TAKE = b"\x01\x00" * (SAMPLE_RATE * 4)  # four seconds
 
 
@@ -33,6 +34,7 @@ def vec(i):
 
 @pytest.fixture
 def runtime(hass):
+    hass.states.async_set(SATELLITE, "idle")
     engine = SimpleNamespace(calls=0)
 
     async def embed(audio, *, wav):
@@ -46,79 +48,116 @@ def runtime(hass):
 
 
 async def test_three_takes_create_the_profile_and_the_speaker_guides_each_step(runtime):
-    first = runtime.start_satellite_enrollment("Alex")
+    first = runtime.start_satellite_enrollment("Alex", SATELLITE)
     assert first == SENTENCES[0] and runtime.enrolling
-    say, more = await runtime.async_satellite_take(take(1))
+    say, more = await runtime.async_satellite_take(take(1), runtime.enrollment, 0)
     assert SENTENCES[1] in say and more
-    say, more = await runtime.async_satellite_take(take(2))
+    say, more = await runtime.async_satellite_take(take(2), runtime.enrollment, 1)
     assert SENTENCES[2] in say and more
-    say, more = await runtime.async_satellite_take(take(3))
+    say, more = await runtime.async_satellite_take(take(3), runtime.enrollment, 2)
     assert "saved Alex" in say and not more and not runtime.enrolling
     assert [p.name for p in runtime.profiles.values()] == ["Alex"]
 
 
 async def test_a_short_or_unusable_take_is_asked_for_again_without_counting(runtime):
-    runtime.start_satellite_enrollment("Alex")
-    say, more = await runtime.async_satellite_take(b"\0" * (MIN_TAKE_BYTES - 2))
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
+    say, more = await runtime.async_satellite_take(b"\0" * (MIN_TAKE_BYTES - 2), runtime.enrollment, 0)
     assert "a little short" in say and SENTENCES[0] in say and more
     assert len(runtime.enrollment.takes) == 0
 
 
 async def test_existing_name_replaces_that_persons_samples_and_bad_names_are_refused(runtime):
-    runtime.start_satellite_enrollment("Alex")
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
     for i in range(3):
-        await runtime.async_satellite_take(take(i + 1))
+        await runtime.async_satellite_take(take(i + 1), runtime.enrollment, i)
     (speaker_id,) = runtime.profiles
-    runtime.start_satellite_enrollment("alex")
+    runtime.start_satellite_enrollment("alex", SATELLITE)
     assert runtime.enrollment.speaker_id == speaker_id
     with pytest.raises(ProfileError):
-        runtime.start_satellite_enrollment("Alex 123")
+        runtime.start_satellite_enrollment("Alex 123", SATELLITE)
 
 
 async def test_it_closes_by_itself(runtime):
-    runtime.start_satellite_enrollment("Alex")
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
+    enrollment = runtime.enrollment
     with patch.object(rt_mod, "monotonic", return_value=10**9):
         assert not runtime.enrolling
-    say, more = await runtime.async_satellite_take(TAKE)
+    say, more = await runtime.async_satellite_take(TAKE, enrollment, 0)
     assert "has ended" in say and not more
 
 
-async def test_stt_takes_the_audio_and_never_sends_it_to_a_provider(runtime):
-    runtime.start_satellite_enrollment("Alex")
+@pytest.mark.parametrize("text", ["Turn on the lamp", SENTENCES[0]])
+async def test_stt_keeps_the_real_transcript_and_only_offers_explicit_samples(runtime, text):
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
     entry = SimpleNamespace(entry_id="e", options={"stt_provider": "stt.x"}, runtime_data=runtime)
     obj = VoiceRecognitionSTT(entry)
-    provider = SimpleNamespace(async_process_audio_stream=AsyncMock())
+
+    async def recognize(metadata, stream):
+        assert b"".join([chunk async for chunk in stream]) == TAKE
+        return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
 
     async def audio():
         yield TAKE
 
+    provider = SimpleNamespace(async_process_audio_stream=recognize)
     with patch.object(VoiceRecognitionSTT, "_provider", new_callable=PropertyMock, return_value=provider):
         result = await obj.async_process_audio_stream(META, audio())
-    provider.async_process_audio_stream.assert_not_called()
     turn = runtime.handoff.consume_turn(result.text)
-    assert result.result == stt.SpeechResultState.SUCCESS
-    assert turn.match.reason == ENROLLING and turn.audio == TAKE
+    assert result.text == text
+    assert turn.audio == (TAKE if text == SENTENCES[0] else None)
 
 
-async def test_conversation_answers_with_the_next_sentence_and_does_not_forward(runtime, hass):
-    runtime.start_satellite_enrollment("Alex")
+@pytest.mark.parametrize("satellite", [SATELLITE, "assist_satellite.lounge", None])
+async def test_only_the_selected_satellite_can_add_a_sample(runtime, hass, satellite):
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
     entry = SimpleNamespace(entry_id="e", options={"conversation_agent": "conversation.x"}, runtime_data=runtime)
     agent = VoiceRecognitionAgent(entry)
     agent.hass = hass
-    runtime.handoff.offer("voice enrolment sample", Match(None, None, ENROLLING), TAKE)
+    runtime.handoff.offer(SENTENCES[0], Match(None, None, "no_profiles"), TAKE, runtime.enrollment)
     request = conversation.ConversationInput(
-        text="voice enrolment sample", context=SimpleNamespace(), conversation_id="c", device_id="d",
-        satellite_id="s", language="en", agent_id="conversation.sentient_voice_recognition")
+        text=SENTENCES[0], context=SimpleNamespace(), conversation_id="c", device_id="d",
+        satellite_id=satellite, language="en", agent_id="conversation.sentient_voice_recognition")
     with patch.object(VoiceRecognitionAgent, "_agent", new_callable=PropertyMock, return_value=object()), \
             patch("homeassistant.components.conversation.async_converse", new=AsyncMock()) as forward:
         result = await agent.async_process(request)
-    forward.assert_not_called()
-    assert SENTENCES[1] in result.response.speech["plain"]["speech"] and result.continue_conversation
+    if satellite == SATELLITE:
+        forward.assert_not_called()
+        assert SENTENCES[1] in result.response.speech["plain"]["speech"] and result.continue_conversation
+        assert len(runtime.enrollment.takes) == 1
+    else:
+        forward.assert_awaited_once()
+        assert runtime.enrollment.takes == []
+
+
+@pytest.mark.parametrize("pause_at", [1, 3])
+async def test_cancel_and_restart_during_final_sample_does_not_save_old_profile(runtime, pause_at):
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
+    old = runtime.enrollment
+    await runtime.async_satellite_take(take(1), old, 0)
+    await runtime.async_satellite_take(take(2), old, 1)
+    started, resume = asyncio.Event(), asyncio.Event()
+    embed = runtime._async_embed_samples
+
+    async def pause(samples):
+        if len(samples) == pause_at:
+            started.set()
+            await resume.wait()
+        return await embed(samples)
+
+    with patch.object(runtime, "_async_embed_samples", side_effect=pause):
+        pending = asyncio.create_task(runtime.async_satellite_take(take(3), old, 2))
+        await asyncio.wait_for(started.wait(), 2)
+        runtime.cancel_satellite_enrollment()
+        runtime.start_satellite_enrollment("Sam", SATELLITE)
+        resume.set()
+        assert "has ended" in (await pending)[0]
+    assert runtime.enrollment.name == "Sam"
+    assert runtime.profiles == {}
 
 
 async def test_distinctness_names_the_nearest_other_voice(runtime):
-    runtime.start_satellite_enrollment("Alex")
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
     for i in range(3):
-        await runtime.async_satellite_take(take(i + 1))
+        await runtime.async_satellite_take(take(i + 1), runtime.enrollment, i)
     out = runtime.distinctness()
     assert out == [{"name": "Alex", "nearest": None, "nearest_score": None}]

@@ -12,6 +12,7 @@ from weakref import WeakKeyDictionary
 from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 import aiohttp
 
 from .const import DOMAIN, MAX_PROFILES, MAX_WAV_BYTES
@@ -43,6 +44,7 @@ class PendingTurn:
     expires: float
     match: Match
     audio: bytes | None = None
+    enrollment: SatelliteEnrollment | None = None
 
 
 class TurnHandoff:
@@ -55,10 +57,13 @@ class TurnHandoff:
         if (task := asyncio.current_task()) is not None:
             self._pending.pop(task, None)
 
-    def offer(self, text: str, match: Match, audio: bytes | None = None) -> None:
+    def offer(
+        self, text: str, match: Match, audio: bytes | None = None,
+        enrollment: SatelliteEnrollment | None = None,
+    ) -> None:
         if (task := asyncio.current_task()) is not None:
             self._pending[task] = PendingTurn(
-                id(text), sha256(text.encode("utf-8", "surrogatepass")).digest(), monotonic() + HANDOFF_SECONDS, match, audio
+                id(text), sha256(text.encode("utf-8", "surrogatepass")).digest(), monotonic() + HANDOFF_SECONDS, match, audio, enrollment
             )
 
     def consume_turn(self, text: str) -> PendingTurn | None:
@@ -101,6 +106,7 @@ class Runtime:
         self.profiles: dict[str, Profile] = {}
         self._store = profile_store(hass, entry_id)
         self._edit_lock = asyncio.Lock()
+        self._take_lock = asyncio.Lock()
         self._closed = False
         self._recognizing = False
         self._retry_at = 0.0
@@ -129,6 +135,7 @@ class Runtime:
         """Finish any profile write before a new runtime loads the store."""
         async with self._edit_lock:
             self._closed = True
+            self.enrollment = None
 
     def _check_open(self) -> None:
         if self._closed:
@@ -213,6 +220,7 @@ class Runtime:
         *,
         speaker_id: str | None = None,
         recordings: tuple[bytes, ...] | None = None,
+        enrollment: SatelliteEnrollment | None = None,
     ) -> float:
         """Create a profile or replace its template while retaining its ID.
 
@@ -250,6 +258,11 @@ class Runtime:
             ):
                 raise ProfileError("duplicate_voice")
             key = speaker_id or uuid4().hex
+            if enrollment is not None:
+                if not self.enrolling or self.enrollment is not enrollment:
+                    raise ProfileError("enrolment_ended")
+                # Claim the commit before the atomic write. An older take never clears a newer session.
+                self.enrollment = None
             await self._async_save({**self.profiles, key: Profile(name, vector)})
             return round(consistency, 2)
 
@@ -261,11 +274,14 @@ class Runtime:
             self.enrollment = None
         return self.enrollment is not None
 
-    def start_satellite_enrollment(self, name: str) -> str:
+    def start_satellite_enrollment(self, name: str, satellite_id: str) -> str:
         """Open an enrolment: the next three long sentences spoken to a Voice Recognition speaker become the samples.
 
         A name that already has a profile replaces that person's samples. Returns the first sentence to read."""
         self._check_open()
+        state = self.hass.states.get(satellite_id)
+        if not satellite_id.startswith("assist_satellite.") or state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            raise ProfileError("satellite_unavailable")
         name = name.strip()
         existing = next((key for key, p in self.profiles.items() if p.name.casefold() == name.casefold()), None)
         if existing is None:
@@ -274,7 +290,7 @@ class Runtime:
             name = self._check_name(name, None)
         else:
             name = self.profiles[existing].name
-        self.enrollment = SatelliteEnrollment(name, existing, monotonic() + WINDOW_SECONDS)
+        self.enrollment = SatelliteEnrollment(name, satellite_id, existing, monotonic() + WINDOW_SECONDS)
         return SENTENCES[0]
 
     def distinctness(self) -> list[dict]:
@@ -291,34 +307,53 @@ class Runtime:
         """Close an open speaker enrolment without saving anything."""
         self.enrollment = None
 
-    async def async_satellite_take(self, pcm: bytes) -> tuple[str, bool]:
-        """Take one spoken sample: returns what the speaker says next and whether to keep listening."""
-        if not self.enrolling:
-            return "That voice enrolment has ended. Start it again from the Sentient Voice Recognition settings.", False
-        e = self.enrollment
-        again = SENTENCES[len(e.takes)]
-        if len(pcm) < MIN_TAKE_BYTES:
-            return f"That was a little short. Please say it again: {again}", True
-        wav = pcm_to_wav(pcm)
-        try:
-            await self._async_embed_samples((wav,))
-        except ProfileError as err:
-            if err.args[0] in ("engine_busy", "engine_unavailable"):
-                return "I couldn't reach the voice engine for a moment. Please say it again.", True
-            return f"I couldn't hear enough clear speech. Please say it again: {again}", True
-        e.takes.append(wav)
-        if len(e.takes) < len(SENTENCES):
-            return f"Thanks. Now say: {SENTENCES[len(e.takes)]}", True
-        self.enrollment = None
-        try:
-            consistency = await self.async_enroll(e.name, speaker_id=e.speaker_id, recordings=tuple(e.takes))
-        except ProfileError as err:
-            _LOGGER.debug("Speaker enrolment failed: %s", err.args[0])
-            return ("That didn't quite work, because the three recordings didn't sound like the same person "
-                    "or matched another saved voice. Start it again from the settings."), False
-        note = ("" if consistency >= STEADY_TAKES else " The three recordings varied quite a bit, so if matching is "
-                "unreliable, record again somewhere quieter.")
-        return f"All done. I've saved {e.name}'s voice from this speaker.{note}", False
+    async def async_satellite_take(
+        self, pcm: bytes, enrollment: SatelliteEnrollment, index: int,
+    ) -> tuple[str, bool]:
+        """Accept the expected sample from the conversation's selected satellite."""
+        ended = "That voice enrolment has ended. Start it again from the Voice Recognition settings."
+        async with self._take_lock:
+            if not self.enrolling or self.enrollment is not enrollment:
+                return ended, False
+            expected = len(enrollment.takes)
+            again = SENTENCES[expected]
+            if index != expected:
+                return f"Please read the next sentence: {again}", True
+            if len(pcm) < MIN_TAKE_BYTES:
+                return f"That was a little short. Please say it again: {again}", True
+            wav = pcm_to_wav(pcm)
+            try:
+                await self._async_embed_samples((wav,))
+            except ProfileError as err:
+                if not self.enrolling or self.enrollment is not enrollment:
+                    return ended, False
+                if err.args[0] in ("engine_busy", "engine_unavailable"):
+                    return "I couldn't reach the voice engine for a moment. Please say it again.", True
+                return f"I couldn't hear enough clear speech. Please say it again: {again}", True
+            if not self.enrolling or self.enrollment is not enrollment:
+                return ended, False
+            enrollment.takes.append(wav)
+            if len(enrollment.takes) < len(SENTENCES):
+                return f"Thanks. Now say: {SENTENCES[len(enrollment.takes)]}", True
+            try:
+                consistency = await self.async_enroll(
+                    enrollment.name, speaker_id=enrollment.speaker_id,
+                    recordings=tuple(enrollment.takes), enrollment=enrollment,
+                )
+            except (ProfileError, OSError) as err:
+                if self.enrollment is enrollment:
+                    self.enrollment = None
+                if isinstance(err, ProfileError) and err.args[0] == "enrolment_ended":
+                    return ended, False
+                _LOGGER.debug("Speaker enrolment failed: %s", err)
+                return "I couldn't save the voice profile. Please start again from the settings.", False
+            finally:
+                if self.enrollment is enrollment:
+                    # Assist may cancel the pipeline while the final take is still being checked.
+                    enrollment.takes.pop()
+            note = ("" if consistency >= STEADY_TAKES else " The three recordings varied quite a bit, so if matching is "
+                    "unreliable, record again somewhere quieter.")
+            return f"All done. I've saved {enrollment.name}'s voice from this speaker.{note}", False
 
     async def async_rename(self, speaker_id: str, name: str) -> None:
         """Change a display name without changing the speaker ID or template."""

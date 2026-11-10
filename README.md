@@ -1,4 +1,4 @@
-# Sentient Voice Recognition 0.2.4
+# Sentient Voice Recognition
 
 A separate Home Assistant OS integration that estimates who spoke an Assist command. The Voice Recognition STT adapter passes the original microphone stream to your existing speech-to-text provider while collecting a short copy in memory. The local Sentient Voice Engine compares that audio to enrolled voice profiles. The Voice Recognition conversation adapter passes the original request to Sentient, along with the likely display name if you enable that option.
 
@@ -37,7 +37,7 @@ Open **Settings → Devices & services → Sentient Voice Recognition → Config
 
 - Choose **Record with microphone**, then **Open the microphone recorder**. Enter a name, record each line, and listen back or retake as needed. Confirm consent and select **Save voice profile**. The recorder uses the microphone of the phone or computer running Home Assistant. It requires an HTTPS connection and browser microphone permission. If the app’s browser cannot access the microphone, open your HTTPS Home Assistant address in a browser.
 - Choose **Upload three WAV files** to use existing recordings.
-- Choose **Record from a speaker** to record through a real Voice Recognition speaker, such as the kitchen satellite. Enter a name, then say the wake word at that speaker and read the three sentences it gives you, one at a time. The profile is then built from that speaker's own microphone, so it matches the way you sound when you actually use it. This is usually the best choice when matching is unreliable. An existing name replaces that person's samples. The recording window closes by itself after 10 minutes, and each sentence needs at least 3 seconds of speech.
+- Choose **Record from a speaker**, select the Assist satellite, enter the name and confirm consent. Say its wake word and read the numbered phrases in order. If the satellite stops listening between phrases, say its wake word again. The window closes after 10 minutes. An existing name replaces that profile’s samples. The selected pipeline’s speech-to-text provider receives the audio for transcription, and Voice Engine builds the profile locally. Use the browser recorder or WAV upload for enrolment without pipeline transcription.
 
 The recorder checks for silent or very quiet takes before offering playback. It keeps usable takes in the browser until you save. Home Assistant sends them to the local Voice Engine for processing and stores the derived profile. Repeat for each consenting household member. Use three different sentences and aim for **4–8 seconds** of clear speech in each recording. The upload form accepts 16-bit PCM WAV, mono or stereo, at 8–48 kHz, up to 20 seconds per file.
 
@@ -77,7 +77,7 @@ Speaker inference and voice templates stay on your Home Assistant system. Your e
 
 ## Ask Sentient who is speaking
 
-Update Voice Recognition to **0.2.5** or later and [Sentient](https://github.com/conahmorgan2304/sentient) to **1.3.4** or later. In Voice Recognition, open **Configure → Voice pipeline and matching settings**, select your existing Sentient agent, and enable **Let Sentient identify speakers locally**. You can leave **Give matched names to the conversation agent** off. The local answer skips the AI model and uses your existing TTS. A cloud TTS provider receives the spoken reply, which includes the name when matched.
+Update Voice Recognition to **0.2.5** or later and [Sentient](https://github.com/conahmorgan2304/sentient) to **1.3.4** or later. In Voice Recognition, open **Configure → Voice pipeline and matching settings**, select your existing Sentient agent, and enable **Let Sentient identify speakers locally**. You can leave **Share matched names with the conversation agent** off. The local answer skips the AI model and uses your existing TTS. A cloud TTS provider receives the spoken reply, which includes the name when matched.
 
 Ask **“Can you tell me who you think is speaking to you right now?”** in English. The longer phrase gives Voice Recognition more speech to analyse. Sentient reports the current match or says it couldn't match your voice. In guest mode, Sentient keeps the name out of this reply. Turning the local setting off stops the local handoff and keeps the saved profiles.
 

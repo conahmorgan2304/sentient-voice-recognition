@@ -9,14 +9,14 @@
           "conversation_agent": "Existing Sentient conversation agent",
           "match_threshold": "Minimum speaker similarity",
           "local_speaker": "Let Sentient identify speakers locally",
-          "share_name": "Give matched names to the conversation agent",
+          "share_name": "Share matched names with the conversation agent",
           "engine_token": "Sentient Voice Engine token",
           "engine_install": "Voice Engine installation"
         },
         "data_description": {
           "match_threshold": "Start at 0.65. Higher values give more unknown results and fewer tentative matches.",
           "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
-          "share_name": "Enable this for spoken personalization. If your conversation agent uses a cloud AI model, it may receive the matched display name.",
+          "share_name": "Allows the conversation agent to receive the matched name for personalisation and automatic memory attribution. A cloud AI model can receive the name.",
           "engine_install": "Choose where you installed the Sentient Voice Engine app."
         }
       }
@@ -48,13 +48,13 @@
           "conversation_agent": "Existing Sentient conversation agent",
           "match_threshold": "Minimum speaker similarity",
           "local_speaker": "Let Sentient identify speakers locally",
-          "share_name": "Give matched names to the conversation agent",
+          "share_name": "Share matched names with the conversation agent",
           "engine_token": "Sentient Voice Engine token",
           "engine_install": "Voice Engine installation"
         },
         "data_description": {
           "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
-          "share_name": "If your conversation agent uses a cloud AI model, it may receive the matched display name.",
+          "share_name": "Allows the conversation agent to receive the matched name for personalisation and automatic memory attribution. A cloud AI model can receive the name.",
           "engine_token": "Leave blank to keep the saved engine token.",
           "engine_install": "Choose where you installed the Sentient Voice Engine app."
         }
@@ -120,9 +120,11 @@
       },
       "satellite": {
         "title": "Record from a speaker",
-        "description": "Use the speaker you actually talk to, so the voice profile matches how it hears you. Enter the person's name (an existing name replaces that person's samples). For the next 10 minutes, the next three long sentences spoken to a Voice Recognition speaker are used as the samples instead of being run as commands; the speaker tells you what to say next.",
+        "description": "Choose the Assist speaker that will record the samples. An existing name replaces that person's samples. Say the numbered sample phrases in order within 10 minutes. Your configured speech-to-text provider transcribes each sample, then Voice Engine builds the profile locally.",
         "data": {
-          "name": "Person's name"
+          "name": "Person's name",
+          "satellite_id": "Assist speaker",
+          "consent": "The person agreed to enrol their voice"
         }
       }
     },
@@ -143,6 +145,7 @@
       "bad_test_sample": "Select a fresh 16-bit PCM WAV with clear speech from one person, up to 20 seconds. Then try again.",
       "engine_busy": "Voice Engine is busy. Wait for the current request to finish, then select your recording again.",
       "no_profiles": "Enroll a person before testing a recording.",
+      "satellite_unavailable": "Select an available Assist speaker.",
       "integration_reloaded": "Voice Recognition was reloaded. Reopen Configure and try again.",
       "sample_unreadable": "This upload could not be read. Choose a nonempty WAV recording and reselect all three files.",
       "sample_duplicate": "This sounds like a recording you already selected. Record a new take and reselect all three files.",
@@ -160,7 +163,7 @@
       "test_passed": "**Voice test passed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
       "test_failed": "**Voice test failed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
       "open_recorder": "[Open the microphone recorder]({recorder_path}). Use Home Assistant over HTTPS, then allow microphone access when asked.",
-      "satellite_started": "Ready for {name}. Go to the speaker you want to use, say its wake word, and read this out loud: “{sentence}”. It will give you the next two sentences. Anyone else speaking to a Voice Recognition speaker in the next 10 minutes would be taken as a sample, so keep the room quiet."
+      "satellite_started": "Ready for {name} on {satellite}. Say its wake word, then read: “{sentence}”. The speaker will give you the next two phrases. If it stops listening between samples, say its wake word again."
     }
   },
   "selector": {

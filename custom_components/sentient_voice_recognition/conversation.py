@@ -12,7 +12,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from . import VoiceRecognitionEntry
 from .const import CONF_AGENT, CONF_LOCAL_SPEAKER, CONF_SHARE_NAME, EVENT_IDENTIFIED
-from .satellite import ENROLLING
+from .satellite import sample_index
 from .speaker_context import SpeakerTurn, speaker_turn
 
 
@@ -81,9 +81,12 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
         prompt = user_input.extra_system_prompt
         local_result = None
         turn = runtime.handoff.consume_turn(user_input.text)
-        if turn is not None and turn.match.reason == ENROLLING:
-            # an enrolment sample: answer with the next sentence to read, and don't pass it on as a command
-            speech, more = await runtime.async_satellite_take(turn.audio or b"")
+        if (
+            turn is not None and turn.enrollment is not None
+            and user_input.satellite_id == turn.enrollment.satellite_id
+            and (index := sample_index(user_input.text)) is not None
+        ):
+            speech, more = await runtime.async_satellite_take(turn.audio or b"", turn.enrollment, index)
             response = intent.IntentResponse(language=user_input.language)
             response.async_set_speech(speech)
             return conversation.ConversationResult(
@@ -91,7 +94,7 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
             )
         if (match := None if turn is None else turn.match) is not None:
             profile = runtime.profiles.get(match.speaker_id)
-            speaker = SpeakerTurn(match.speaker_id, profile.name) if profile else SpeakerTurn(None, None)
+            speaker = SpeakerTurn(match.speaker_id, profile.name, bool(self._entry.options.get(CONF_SHARE_NAME))) if profile else SpeakerTurn(None, None)
             if self._entry.options.get(CONF_LOCAL_SPEAKER):
                 local_result = speaker
             self.hass.bus.async_fire(

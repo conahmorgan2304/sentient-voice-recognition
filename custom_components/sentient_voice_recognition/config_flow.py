@@ -15,6 +15,8 @@ from homeassistant.config_entries import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     FileSelector,
     FileSelectorConfig,
     SelectSelector,
@@ -173,18 +175,27 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
             return self.async_abort(reason="not_loaded")
         errors = {}
         if user_input is not None:
-            try:
-                sentence = self.config_entry.runtime_data.start_satellite_enrollment(user_input["name"])
-            except ProfileError as err:
-                errors["name"] = err.args[0]
+            if not user_input["consent"]:
+                errors["consent"] = "consent_required"
             else:
-                return self.async_abort(
-                    reason="satellite_started",
-                    description_placeholders={"name": user_input["name"].strip(), "sentence": sentence},
-                )
-        return self.async_show_form(
-            step_id="satellite", data_schema=probatio.Schema({probatio.Required("name"): str}), errors=errors
-        )
+                try:
+                    satellite_id = user_input["satellite_id"]
+                    sentence = self.config_entry.runtime_data.start_satellite_enrollment(user_input["name"], satellite_id)
+                except ProfileError as err:
+                    errors["base"] = err.args[0]
+                else:
+                    return self.async_abort(
+                        reason="satellite_started",
+                        description_placeholders={
+                            "name": user_input["name"].strip(), "sentence": sentence,
+                            "satellite": self.hass.states.get(satellite_id).name,
+                        },
+                    )
+        return self.async_show_form(step_id="satellite", data_schema=probatio.Schema({
+            probatio.Required("name"): str,
+            probatio.Required("satellite_id"): EntitySelector(EntitySelectorConfig(domain="assist_satellite")),
+            probatio.Required("consent", default=False): bool,
+        }), errors=errors)
 
     async def async_step_record(self, user_input=None) -> ConfigFlowResult:
         """Open the microphone recorder from the profile options."""

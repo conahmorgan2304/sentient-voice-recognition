@@ -17,6 +17,7 @@ class SpeakerTurn:
 
     speaker_id: str | None
     display_name: str | None
+    share_name: bool = False
 
 
 def _request_key(request: ConversationInput) -> tuple:

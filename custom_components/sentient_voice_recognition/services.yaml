@@ -5,6 +5,15 @@ start_speaker_enrolment:
       example: Alex
       selector:
         text:
+    satellite_id:
+      required: true
+      selector:
+        entity:
+          domain: assist_satellite
+    consent:
+      required: true
+      selector:
+        boolean:
 cancel_speaker_enrolment:
 status:
 set_match_threshold:

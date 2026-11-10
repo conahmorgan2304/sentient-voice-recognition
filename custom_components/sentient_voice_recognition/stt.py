@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import VoiceRecognitionEntry
 from .const import CONF_STT, CONF_THRESHOLD, DEFAULT_THRESHOLD, MAX_CAPTURE_BYTES, SAMPLE_RATE
 from .recognition import Match
-from .satellite import ENROLLING
+from .satellite import sample_index
 
 
 async def async_setup_entry(
@@ -86,16 +86,7 @@ class VoiceRecognitionSTT(stt.SpeechToTextEntity):
             and metadata.channel == 1
             and metadata.sample_rate == SAMPLE_RATE
         )
-        if supported and runtime.enrolling:
-            # a voice is being enrolled from this speaker: keep the audio for the sample and don't send it to a provider
-            pcm = bytearray()
-            async for chunk in stream:
-                remaining = MAX_CAPTURE_BYTES - len(pcm)
-                if remaining > 0:
-                    pcm.extend(chunk[:remaining])
-            text = "voice enrolment sample"
-            runtime.handoff.offer(text, Match(None, None, ENROLLING), bytes(pcm))
-            return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
+        enrollment = runtime.enrollment if supported and runtime.enrolling else None
         capture = supported and bool(runtime.profiles)
         audio = bytearray()
         threshold = self._entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
@@ -109,7 +100,8 @@ class VoiceRecognitionSTT(stt.SpeechToTextEntity):
                     audio.extend(chunk[:remaining])
                 yield chunk
             # the speech has ended: recognise the voice while the provider is still working out the words
-            recognition = asyncio.create_task(runtime.async_recognize(bytes(audio), threshold))
+            if capture:
+                recognition = asyncio.create_task(runtime.async_recognize(bytes(audio), threshold))
 
         process = (
             provider.internal_async_process_audio_stream
@@ -117,14 +109,17 @@ class VoiceRecognitionSTT(stt.SpeechToTextEntity):
             else provider.async_process_audio_stream
         )
         try:
-            result = await process(metadata, tapped_stream() if capture else stream)
+            result = await process(metadata, tapped_stream() if capture or enrollment is not None else stream)
             if result.result == stt.SpeechResultState.SUCCESS and result.text:
                 if capture:
                     match = await self._finished(recognition, bytes(audio), threshold)
                 else:
                     reason = "no_profiles" if supported else "unsupported_audio"
                     match = Match(None, None, reason)
-                runtime.handoff.offer(result.text, match)
+                if enrollment is not None and sample_index(result.text) is not None:
+                    runtime.handoff.offer(result.text, match, bytes(audio), enrollment)
+                else:
+                    runtime.handoff.offer(result.text, match)
             return result
         finally:
             if recognition is not None and not recognition.done():
