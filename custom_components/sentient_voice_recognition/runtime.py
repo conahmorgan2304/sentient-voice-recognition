@@ -111,6 +111,7 @@ class Runtime:
         self._recognizing = False
         self._retry_at = 0.0
         self.enrollment: SatelliteEnrollment | None = None
+        self._enrollment_timer: asyncio.TimerHandle | None = None
 
     async def async_load(self) -> None:
         """Load profiles created for the current speaker model."""
@@ -135,7 +136,7 @@ class Runtime:
         """Finish any profile write before a new runtime loads the store."""
         async with self._edit_lock:
             self._closed = True
-            self.enrollment = None
+            self.cancel_satellite_enrollment()
 
     def _check_open(self) -> None:
         if self._closed:
@@ -225,23 +226,28 @@ class Runtime:
         """Create a profile or replace its template while retaining its ID.
 
         Returns how alike the three samples were (the lowest pairwise score): higher means a steadier recording."""
-        if len(files if recordings is None else recordings) != 3:
+        if enrollment is None and len(files if recordings is None else recordings) != 3:
             raise ProfileError("bad_samples")
         for index, file_id in enumerate(files):
             if file_id in files[:index]:
                 raise ProfileError("sample_duplicate", index)
         async with self._edit_lock:
             self._check_open()
+            if enrollment is not None and (not self.enrolling or self.enrollment is not enrollment):
+                raise ProfileError("enrolment_ended")
             if speaker_id is not None:
                 name = self._get_profile(speaker_id).name
             elif len(self.profiles) >= MAX_PROFILES:
                 raise ProfileError("profile_limit")
             name = self._check_name(name, speaker_id)
-            vectors = (
-                await self._async_embed_uploads(files)
-                if recordings is None
-                else await self._async_embed_samples(recordings)
-            )
+            if enrollment is not None:
+                vectors = [vector for _, vector in enrollment.takes]
+                if len(vectors) != len(SENTENCES):
+                    raise ProfileError("bad_samples")
+            elif recordings is None:
+                vectors = await self._async_embed_uploads(files)
+            else:
+                vectors = await self._async_embed_samples(recordings)
             consistency = 1.0
             for index, vector in enumerate(vectors):
                 for other in vectors[:index]:
@@ -262,7 +268,7 @@ class Runtime:
                 if not self.enrolling or self.enrollment is not enrollment:
                     raise ProfileError("enrolment_ended")
                 # Claim the commit before the atomic write. An older take never clears a newer session.
-                self.enrollment = None
+                self.cancel_satellite_enrollment()
             await self._async_save({**self.profiles, key: Profile(name, vector)})
             return round(consistency, 2)
 
@@ -270,8 +276,8 @@ class Runtime:
     @property
     def enrolling(self) -> bool:
         """A speaker enrolment is open (it closes by itself after a few minutes)."""
-        if self.enrollment is not None and self.enrollment.expires < monotonic():
-            self.enrollment = None
+        if self.enrollment is not None and self.enrollment.expires <= monotonic():
+            self.cancel_satellite_enrollment()
         return self.enrollment is not None
 
     def start_satellite_enrollment(self, name: str, satellite_id: str) -> str:
@@ -290,8 +296,14 @@ class Runtime:
             name = self._check_name(name, None)
         else:
             name = self.profiles[existing].name
-        self.enrollment = SatelliteEnrollment(name, satellite_id, existing, monotonic() + WINDOW_SECONDS)
+        self.cancel_satellite_enrollment()
+        self.enrollment = enrollment = SatelliteEnrollment(name, satellite_id, existing, monotonic() + WINDOW_SECONDS)
+        self._enrollment_timer = self.hass.loop.call_later(WINDOW_SECONDS, self._expire_enrollment, enrollment)
         return SENTENCES[0]
+
+    def _expire_enrollment(self, enrollment: SatelliteEnrollment) -> None:
+        if self.enrollment is enrollment:
+            self.cancel_satellite_enrollment()
 
     def distinctness(self) -> list[dict]:
         """Each saved voice and how close the nearest other voice is (high means they could be confused)."""
@@ -305,7 +317,12 @@ class Runtime:
 
     def cancel_satellite_enrollment(self) -> None:
         """Close an open speaker enrolment without saving anything."""
-        self.enrollment = None
+        if self._enrollment_timer is not None:
+            self._enrollment_timer.cancel()
+            self._enrollment_timer = None
+        if self.enrollment is not None:
+            self.enrollment.takes.clear()
+            self.enrollment = None
 
     async def async_satellite_take(
         self, pcm: bytes, enrollment: SatelliteEnrollment, index: int,
@@ -321,9 +338,11 @@ class Runtime:
                 return f"Please read the next sentence: {again}", True
             if len(pcm) < MIN_TAKE_BYTES:
                 return f"That was a little short. Please say it again: {again}", True
-            wav = pcm_to_wav(pcm)
+            fingerprint = sha256(pcm).digest()
+            if any(fingerprint == old for old, _ in enrollment.takes):
+                return f"That sounds like a repeated sample. Please record a new take: {again}", True
             try:
-                await self._async_embed_samples((wav,))
+                (vector,) = await self._async_embed_samples((pcm_to_wav(pcm),))
             except ProfileError as err:
                 if not self.enrolling or self.enrollment is not enrollment:
                     return ended, False
@@ -332,17 +351,16 @@ class Runtime:
                 return f"I couldn't hear enough clear speech. Please say it again: {again}", True
             if not self.enrolling or self.enrollment is not enrollment:
                 return ended, False
-            enrollment.takes.append(wav)
+            enrollment.takes.append((fingerprint, vector))
             if len(enrollment.takes) < len(SENTENCES):
                 return f"Thanks. Now say: {SENTENCES[len(enrollment.takes)]}", True
             try:
                 consistency = await self.async_enroll(
-                    enrollment.name, speaker_id=enrollment.speaker_id,
-                    recordings=tuple(enrollment.takes), enrollment=enrollment,
+                    enrollment.name, speaker_id=enrollment.speaker_id, enrollment=enrollment,
                 )
             except (ProfileError, OSError) as err:
                 if self.enrollment is enrollment:
-                    self.enrollment = None
+                    self.cancel_satellite_enrollment()
                 if isinstance(err, ProfileError) and err.args[0] == "enrolment_ended":
                     return ended, False
                 _LOGGER.debug("Speaker enrolment failed: %s", err)

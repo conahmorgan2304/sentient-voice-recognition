@@ -57,6 +57,7 @@ async def test_three_takes_create_the_profile_and_the_speaker_guides_each_step(r
     say, more = await runtime.async_satellite_take(take(3), runtime.enrollment, 2)
     assert "saved Alex" in say and not more and not runtime.enrolling
     assert [p.name for p in runtime.profiles.values()] == ["Alex"]
+    assert runtime.engine.calls == 3
 
 
 async def test_a_short_or_unusable_take_is_asked_for_again_without_counting(runtime):
@@ -129,22 +130,22 @@ async def test_only_the_selected_satellite_can_add_a_sample(runtime, hass, satel
         assert runtime.enrollment.takes == []
 
 
-@pytest.mark.parametrize("pause_at", [1, 3])
+@pytest.mark.parametrize("pause_at", ["embedding", "commit"])
 async def test_cancel_and_restart_during_final_sample_does_not_save_old_profile(runtime, pause_at):
     runtime.start_satellite_enrollment("Alex", SATELLITE)
     old = runtime.enrollment
     await runtime.async_satellite_take(take(1), old, 0)
     await runtime.async_satellite_take(take(2), old, 1)
     started, resume = asyncio.Event(), asyncio.Event()
-    embed = runtime._async_embed_samples
+    operation = "_async_embed_samples" if pause_at == "embedding" else "async_enroll"
+    original = getattr(runtime, operation)
 
-    async def pause(samples):
-        if len(samples) == pause_at:
-            started.set()
-            await resume.wait()
-        return await embed(samples)
+    async def pause(*args, **kwargs):
+        started.set()
+        await resume.wait()
+        return await original(*args, **kwargs)
 
-    with patch.object(runtime, "_async_embed_samples", side_effect=pause):
+    with patch.object(runtime, operation, side_effect=pause):
         pending = asyncio.create_task(runtime.async_satellite_take(take(3), old, 2))
         await asyncio.wait_for(started.wait(), 2)
         runtime.cancel_satellite_enrollment()
@@ -161,3 +162,23 @@ async def test_distinctness_names_the_nearest_other_voice(runtime):
         await runtime.async_satellite_take(take(i + 1), runtime.enrollment, i)
     out = runtime.distinctness()
     assert out == [{"name": "Alex", "nearest": None, "nearest_score": None}]
+
+
+async def test_expiry_clears_validated_samples_without_another_request(runtime):
+    with patch.object(rt_mod, "WINDOW_SECONDS", 0.05):
+        runtime.start_satellite_enrollment("Alex", SATELLITE)
+    enrolment = runtime.enrollment
+    await runtime.async_satellite_take(take(1), enrolment, 0)
+    fingerprint, vector = enrolment.takes[0]
+    assert len(fingerprint) == 32 and len(vector) == ENGINE_DIMENSION
+    await asyncio.sleep(0.06)
+    assert runtime.enrollment is None and enrolment.takes == []
+
+
+async def test_duplicate_recording_can_be_retried_without_another_embedding(runtime):
+    runtime.start_satellite_enrollment("Alex", SATELLITE)
+    enrolment = runtime.enrollment
+    await runtime.async_satellite_take(take(1), enrolment, 0)
+    reply, more = await runtime.async_satellite_take(take(1), enrolment, 1)
+    assert more and "repeated sample" in reply and SENTENCES[1] in reply
+    assert len(enrolment.takes) == 1 and runtime.engine.calls == 1

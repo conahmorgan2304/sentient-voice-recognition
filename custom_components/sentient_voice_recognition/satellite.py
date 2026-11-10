@@ -6,6 +6,7 @@ import re
 import wave
 
 from .const import SAMPLE_RATE
+from .recognition import Vector
 
 WINDOW_SECONDS = 600  # the enrolment is open this long after it is started in settings
 MIN_TAKE_SECONDS = 3
@@ -48,4 +49,4 @@ class SatelliteEnrollment:
     satellite_id: str
     speaker_id: str | None
     expires: float
-    takes: list[bytes] = field(default_factory=list)
+    takes: list[tuple[bytes, Vector]] = field(default_factory=list)  # fingerprint and validated embedding
