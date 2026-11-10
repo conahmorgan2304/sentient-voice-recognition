@@ -1,4 +1,4 @@
-# Sentient Voice Recognition 0.2.3
+# Sentient Voice Recognition 0.2.4
 
 A separate Home Assistant OS integration that estimates who spoke an Assist command. The Voice Recognition STT adapter passes the original microphone stream to your existing speech-to-text provider while collecting a short copy in memory. The local Sentient Voice Engine compares that audio to enrolled voice profiles. The Voice Recognition conversation adapter passes the original request to Sentient, along with the likely display name if you enable that option.
 
@@ -38,7 +38,7 @@ Open **Settings → Devices & services → Sentient Voice Recognition → Config
 - Choose **Record with microphone**, then **Open the microphone recorder**. Enter a name, record each line, and listen back or retake as needed. Confirm consent and select **Save voice profile**. The recorder uses the microphone of the phone or computer running Home Assistant. It requires an HTTPS connection and browser microphone permission. If the app’s browser cannot access the microphone, open your HTTPS Home Assistant address in a browser.
 - Choose **Upload three WAV files** to use existing recordings.
 
-The recorder keeps takes in the browser until you save. Home Assistant sends them to the local Voice Engine for processing and stores the derived profile. Repeat for each consenting household member. Use three different sentences and aim for **4–8 seconds** of clear speech in each recording. The upload form accepts 16-bit PCM WAV, mono or stereo, at 8–48 kHz, up to 20 seconds per file.
+The recorder checks for silent or very quiet takes before offering playback. It keeps usable takes in the browser until you save. Home Assistant sends them to the local Voice Engine for processing and stores the derived profile. Repeat for each consenting household member. Use three different sentences and aim for **4–8 seconds** of clear speech in each recording. The upload form accepts 16-bit PCM WAV, mono or stereo, at 8–48 kHz, up to 20 seconds per file.
 
 **Suggested read-aloud script**
 

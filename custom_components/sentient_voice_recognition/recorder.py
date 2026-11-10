@@ -33,7 +33,7 @@ async def async_register_recorder(hass: HomeAssistant) -> None:
         hass,
         frontend_url_path=RECORDER_PATH,
         webcomponent_name="sentient-voice-enrollment",
-        module_url=f"{_ASSET_PATH}/recorder.js",
+        module_url=f"{_ASSET_PATH}/recorder.js?v=2",
         require_admin=True,
         config={"prompts": list(ENROLLMENT_PROMPTS), "seconds": RECORDER_SECONDS},
     )

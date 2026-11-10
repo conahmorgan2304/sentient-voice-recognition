@@ -1,5 +1,5 @@
 const SAMPLE_RATE = 16000;
-const WORKLET_URL = new URL("./pcm-worklet.js", import.meta.url);
+const MIN_SIGNAL_RMS = 0.0005;
 const MESSAGES = {
   consent_required: "Confirm that this person agrees to enrol their voice.",
   invalid_name: "Enter a display name of up to 40 letters, spaces, periods, apostrophes or hyphens.",
@@ -48,6 +48,27 @@ function encodeBase64(bytes) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   }
   return btoa(binary);
+}
+
+function strongestChannel(buffer, maxFrames) {
+  let strongest;
+  let level = -1;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    const samples = buffer.getChannelData(channel).subarray(0, maxFrames);
+    let sum = 0;
+    let squares = 0;
+    for (const sample of samples) {
+      sum += sample;
+      squares += sample * sample;
+    }
+    const mean = sum / samples.length;
+    const rms = Math.sqrt(Math.max(0, squares / samples.length - mean * mean));
+    if (rms > level) {
+      strongest = samples;
+      level = rms;
+    }
+  }
+  return { samples: strongest, level };
 }
 
 class SentientVoiceEnrollment extends HTMLElement {
@@ -145,7 +166,7 @@ class SentientVoiceEnrollment extends HTMLElement {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       return "Microphone recording needs Home Assistant over HTTPS. Open your HTTPS address in a browser, or use the WAV upload form.";
     }
-    if (!window.AudioContext || !window.AudioWorkletNode) {
+    if (!window.MediaRecorder || !window.OfflineAudioContext) {
       return "This browser cannot record here. Open Home Assistant in another browser or use the WAV upload form.";
     }
     return "";
@@ -164,9 +185,10 @@ class SentientVoiceEnrollment extends HTMLElement {
       row.querySelector("p").textContent = this.settings?.prompts?.[index] ?? "";
       button.textContent = active ? "Stop" : take ? "Retake" : "Record";
       button.disabled = !!this.unavailable || !this.settings || this.saving
-        || (!!this.session && (!active || !this.session.node || this.session.stopping));
+        || (!!this.session && (!active || this.session.phase !== "recording"));
       row.querySelector("span").textContent = active
-        ? (this.session.node ? "Recording…" : "Waiting for microphone…")
+        ? ({ waiting: "Waiting for microphone…", recording: "Recording…",
+             stopping: "Finishing…", processing: "Checking audio…" })[this.session.phase]
         : take ? `${take.seconds.toFixed(1)} s` : "";
       audio.hidden = !take || !!this.session;
       if (take && audio.getAttribute("src") !== take.url) audio.src = take.url;
@@ -186,37 +208,26 @@ class SentientVoiceEnrollment extends HTMLElement {
     if (this.session || this.saving || this.unavailable) return;
     this.rows.forEach((row) => row.querySelector("audio").pause());
     this.status("");
-    const session = { index };
+    const session = { index, phase: "waiting", chunks: [] };
     this.session = session;
     this.update();
     try {
-      session.context = new AudioContext({ sampleRate: SAMPLE_RATE });
-      if (session.context.sampleRate !== SAMPLE_RATE || !session.context.audioWorklet) {
-        throw new Error("Unsupported audio context");
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, autoGainControl: false }, video: false,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       if (this.session !== session) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
       session.stream = stream;
-      await session.context.audioWorklet.addModule(WORKLET_URL);
-      if (this.session !== session) return;
-      await session.context.resume();
-      if (this.session !== session) return;
-      const seconds = this.settings.seconds;
-      session.node = new AudioWorkletNode(session.context, "sentient-pcm-recorder", {
-        channelCount: 1,
-        channelCountMode: "explicit",
-        processorOptions: { maxFrames: SAMPLE_RATE * seconds },
-      });
-      session.node.port.onmessage = (event) => this.finish(session, event.data);
-      session.node.onprocessorerror = () => this.finish(session, null);
-      session.source = session.context.createMediaStreamSource(stream);
-      session.source.connect(session.node).connect(session.context.destination);
-      session.timer = setTimeout(() => this.stop(), (seconds + 0.5) * 1000);
+      const recorder = new MediaRecorder(stream);
+      session.recorder = recorder;
+      recorder.ondataavailable = ({ data }) => {
+        if (data.size) session.chunks.push(data);
+      };
+      recorder.onstop = () => this.finish(session);
+      recorder.onerror = () => this.captureFailed(session);
+      recorder.start();
+      session.phase = "recording";
+      session.timer = setTimeout(() => this.stop(), this.settings.seconds * 1000);
       this.update();
     } catch (error) {
       if (this.session !== session) return;
@@ -230,43 +241,82 @@ class SentientVoiceEnrollment extends HTMLElement {
 
   stop() {
     const session = this.session;
-    if (!session?.node || session.stopping) return;
-    session.stopping = true;
+    if (session?.phase !== "recording") return;
+    session.phase = "stopping";
     clearTimeout(session.timer);
-    session.node.port.postMessage("stop");
-    session.timer = setTimeout(() => this.finish(session, null), 1000);
+    session.timer = setTimeout(() => this.captureFailed(session), 2000);
+    if (session.recorder.state !== "inactive") session.recorder.stop();
     this.update();
   }
 
-  finish(session, samples) {
+  captureFailed(session) {
     if (this.session !== session) return;
     this.release(session);
-    if (!samples || samples.length < 2 * SAMPLE_RATE) {
-      this.status(`Sample ${session.index + 1} was too short. Read the whole line before stopping.`, true);
-    } else {
-      const bytes = encodeWav(samples);
-      const previous = this.takes[session.index];
-      if (previous) URL.revokeObjectURL(previous.url);
-      this.takes[session.index] = {
-        bytes,
-        url: URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })),
-        seconds: samples.length / SAMPLE_RATE,
-      };
-      this.status(`Sample ${session.index + 1} recorded. You can listen back before saving.`);
-    }
+    this.status("The microphone recording stopped unexpectedly. Retake the sample or upload a WAV file.", true);
     this.update();
+  }
+
+  async finish(session) {
+    if (this.session !== session) return;
+    const label = `Sample ${session.index + 1}`;
+    const blob = new Blob(session.chunks, { type: session.recorder.mimeType });
+    this.stopCapture(session);
+    session.phase = "processing";
+    this.update();
+    try {
+      if (!blob.size) {
+        this.status(`${label} captured no audio. Check microphone access and retake it.`, true);
+        return;
+      }
+      const decoder = new OfflineAudioContext(1, 1, SAMPLE_RATE);
+      const decoded = await decoder.decodeAudioData(await blob.arrayBuffer());
+      if (this.session !== session) return;
+      const { samples, level } = strongestChannel(decoded, this.settings.seconds * SAMPLE_RATE);
+      if (!samples || samples.length < 2 * SAMPLE_RATE) {
+        this.status(`${label} was too short. Read the whole line before stopping.`, true);
+      } else if (level < MIN_SIGNAL_RMS) {
+        this.status(`${label} was silent or too quiet. Check your microphone and retake it.`, true);
+      } else {
+        const bytes = encodeWav(samples);
+        const previous = this.takes[session.index];
+        if (previous) URL.revokeObjectURL(previous.url);
+        this.takes[session.index] = {
+          bytes,
+          url: URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })),
+          seconds: samples.length / SAMPLE_RATE,
+        };
+        this.status(`${label} recorded. You can listen back before saving.`);
+      }
+    } catch {
+      if (this.session === session) {
+        this.status(`Could not read ${label.toLowerCase()}. Try opening Home Assistant in Chrome or upload a WAV file.`, true);
+      }
+    } finally {
+      if (this.session === session) {
+        this.session = null;
+        this.update();
+      }
+    }
+  }
+
+  stopCapture(session) {
+    clearTimeout(session.timer);
+    const recorder = session.recorder;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+      if (recorder.state !== "inactive") recorder.stop();
+      session.recorder = null;
+    }
+    session.stream?.getTracks().forEach((track) => track.stop());
+    session.stream = null;
+    session.chunks.length = 0;
   }
 
   release(session) {
     this.session = null;
-    clearTimeout(session.timer);
-    session.stream?.getTracks().forEach((track) => track.stop());
-    session.source?.disconnect();
-    session.node?.disconnect();
-    session.node?.port.close();
-    if (session.context && session.context.state !== "closed") {
-      session.context.close().catch(() => {});
-    }
+    this.stopCapture(session);
   }
 
   clearTakes() {
