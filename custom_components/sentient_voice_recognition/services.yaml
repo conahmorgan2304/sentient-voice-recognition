@@ -1,0 +1,8 @@
+start_speaker_enrolment:
+  fields:
+    name:
+      required: true
+      example: Alex
+      selector:
+        text:
+cancel_speaker_enrolment:

@@ -170,5 +170,21 @@
         "local": "Local app folder"
       }
     }
+  },
+  "services": {
+    "start_speaker_enrolment": {
+      "name": "Record a voice from a speaker",
+      "description": "Opens a ten-minute window: the next three sentences spoken to a Voice Recognition speaker become this person's voice profile. Returns the first sentence to read.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Who is recording. An existing name replaces that person's samples."
+        }
+      }
+    },
+    "cancel_speaker_enrolment": {
+      "name": "Cancel recording from a speaker",
+      "description": "Closes an open recording window without saving anything."
+    }
   }
 }
