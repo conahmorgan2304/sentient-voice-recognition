@@ -87,7 +87,8 @@
           "rename": "Rename a profile",
           "retrain": "Replace a person's samples",
           "delete": "Delete a profile",
-          "record": "Record with microphone"
+          "record": "Record with microphone",
+          "satellite": "Record from a speaker"
         }
       },
       "retrain": {
@@ -115,6 +116,13 @@
         "data": {
           "sample": "Test WAV recording",
           "expected": "Expected result"
+        }
+      },
+      "satellite": {
+        "title": "Record from a speaker",
+        "description": "Use the speaker you actually talk to, so the voice profile matches how it hears you. Enter the person's name (an existing name replaces that person's samples). For the next 10 minutes, the next three long sentences spoken to a Voice Recognition speaker are used as the samples instead of being run as commands; the speaker tells you what to say next.",
+        "data": {
+          "name": "Person's name"
         }
       }
     },
@@ -151,7 +159,8 @@
       "test_complete": "**Voice test complete**\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
       "test_passed": "**Voice test passed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
       "test_failed": "**Voice test failed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
-      "open_recorder": "[Open the microphone recorder]({recorder_path}). Use Home Assistant over HTTPS, then allow microphone access when asked."
+      "open_recorder": "[Open the microphone recorder]({recorder_path}). Use Home Assistant over HTTPS, then allow microphone access when asked.",
+      "satellite_started": "Ready for {name}. Go to the speaker you want to use, say its wake word, and read this out loud: “{sentence}”. It will give you the next two sentences. Anyone else speaking to a Voice Recognition speaker in the next 10 minutes would be taken as a sample, so keep the room quiet."
     }
   },
   "selector": {

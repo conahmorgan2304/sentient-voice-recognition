@@ -6,11 +6,13 @@ from homeassistant.components import conversation
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from . import VoiceRecognitionEntry
 from .const import CONF_AGENT, CONF_LOCAL_SPEAKER, CONF_SHARE_NAME, EVENT_IDENTIFIED
+from .satellite import ENROLLING
 from .speaker_context import SpeakerTurn, speaker_turn
 
 
@@ -78,7 +80,16 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
         runtime = self._entry.runtime_data
         prompt = user_input.extra_system_prompt
         local_result = None
-        if (match := runtime.handoff.consume(user_input.text)) is not None:
+        turn = runtime.handoff.consume_turn(user_input.text)
+        if turn is not None and turn.match.reason == ENROLLING:
+            # an enrolment sample: answer with the next sentence to read, and don't pass it on as a command
+            speech, more = await runtime.async_satellite_take(turn.audio or b"")
+            response = intent.IntentResponse(language=user_input.language)
+            response.async_set_speech(speech)
+            return conversation.ConversationResult(
+                response=response, conversation_id=user_input.conversation_id, continue_conversation=more
+            )
+        if (match := None if turn is None else turn.match) is not None:
             profile = runtime.profiles.get(match.speaker_id)
             speaker = SpeakerTurn(match.speaker_id, profile.name) if profile else SpeakerTurn(None, None)
             if self._entry.options.get(CONF_LOCAL_SPEAKER):

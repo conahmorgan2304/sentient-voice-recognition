@@ -20,7 +20,7 @@ class Handoff:
 
 
 def make(provider, recognize):
-    runtime = SimpleNamespace(handoff=Handoff(), profiles={"a": 1}, async_recognize=recognize)
+    runtime = SimpleNamespace(handoff=Handoff(), profiles={"a": 1}, async_recognize=recognize, enrolling=False)
     entry = SimpleNamespace(entry_id="e", options={"stt_provider": "stt.x"}, runtime_data=runtime)
     obj = VoiceRecognitionSTT(entry)
     obj.hass = SimpleNamespace()
