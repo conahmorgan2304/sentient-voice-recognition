@@ -1,5 +1,6 @@
 """Tap Assist audio while delegating speech-to-text to the original provider."""
 
+import asyncio
 from collections.abc import AsyncIterable
 
 from homeassistant.components import stt
@@ -86,26 +87,46 @@ class VoiceRecognitionSTT(stt.SpeechToTextEntity):
         )
         capture = supported and bool(runtime.profiles)
         audio = bytearray()
+        threshold = self._entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
+        recognition: asyncio.Task[Match] | None = None
 
         async def tapped_stream():
+            nonlocal recognition
             async for chunk in stream:
                 remaining = MAX_CAPTURE_BYTES - len(audio)
                 if remaining > 0:
                     audio.extend(chunk[:remaining])
                 yield chunk
+            # the speech has ended: recognise the voice while the provider is still working out the words
+            recognition = asyncio.create_task(runtime.async_recognize(bytes(audio), threshold))
 
         process = (
             provider.internal_async_process_audio_stream
             if isinstance(provider, stt.SpeechToTextEntity)
             else provider.async_process_audio_stream
         )
-        result = await process(metadata, tapped_stream() if capture else stream)
-        if result.result == stt.SpeechResultState.SUCCESS and result.text:
-            if capture:
-                threshold = self._entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
-                match = await runtime.async_recognize(bytes(audio), threshold)
-            else:
-                reason = "no_profiles" if supported else "unsupported_audio"
-                match = Match(None, None, reason)
-            runtime.handoff.offer(result.text, match)
-        return result
+        try:
+            result = await process(metadata, tapped_stream() if capture else stream)
+            if result.result == stt.SpeechResultState.SUCCESS and result.text:
+                if capture:
+                    match = await self._finished(recognition, bytes(audio), threshold)
+                else:
+                    reason = "no_profiles" if supported else "unsupported_audio"
+                    match = Match(None, None, reason)
+                runtime.handoff.offer(result.text, match)
+            return result
+        finally:
+            if recognition is not None and not recognition.done():
+                recognition.cancel()
+
+    async def _finished(self, recognition: asyncio.Task | None, audio: bytes, threshold: float) -> Match:
+        """The result of the recognition started when the speech ended (started now if the provider never drained the stream)."""
+        runtime = self._entry.runtime_data
+        if recognition is None:
+            return await runtime.async_recognize(audio, threshold)
+        try:
+            return await recognition
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # an engine fault must never stop an answer
+            return Match(None, None, "engine_unavailable")
