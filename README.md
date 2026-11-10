@@ -76,7 +76,7 @@ Speaker inference and voice templates stay on your Home Assistant system. Your e
 
 ## Ask Sentient who is speaking
 
-Update Voice Recognition to **0.2.5** and [Sentient](https://github.com/conahmorgan2304/sentient) to **1.3.4** or later. In Voice Recognition, open **Configure → Voice pipeline and matching settings**, select your existing Sentient agent, and enable **Let Sentient identify speakers locally**. You can leave **Give matched names to the conversation agent** off. The local answer skips the AI model and uses your existing TTS. A cloud TTS provider receives the spoken reply, which includes the name when matched.
+Update Voice Recognition to **0.2.5** or later and [Sentient](https://github.com/conahmorgan2304/sentient) to **1.3.4** or later. In Voice Recognition, open **Configure → Voice pipeline and matching settings**, select your existing Sentient agent, and enable **Let Sentient identify speakers locally**. You can leave **Give matched names to the conversation agent** off. The local answer skips the AI model and uses your existing TTS. A cloud TTS provider receives the spoken reply, which includes the name when matched.
 
 Ask **“Can you tell me who you think is speaking to you right now?”** in English. The longer phrase gives Voice Recognition more speech to analyse. Sentient reports the current match or says it couldn't match your voice. In guest mode, Sentient keeps the name out of this reply. Turning the local setting off stops the local handoff and keeps the saved profiles.
 
