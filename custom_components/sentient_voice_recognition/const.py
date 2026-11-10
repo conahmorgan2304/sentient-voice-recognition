@@ -28,4 +28,6 @@ ENGINE_INSTALL_REPOSITORY = "repository"
 ENGINE_URL = "http://local-sentient-voice-engine:10487"
 REPOSITORY_ENGINE_URL = "http://bdced7f5-sentient-voice-engine:10487"
 ENGINE_DIMENSION = 192
+LIVE_EMBED_TIMEOUT = 1.5  # seconds a live Assist turn waits for the engine (it runs alongside speech-to-text, so this is hidden)
+UPLOAD_EMBED_TIMEOUT = 5
 MAX_WAV_BYTES = 4 * 1024 * 1024
