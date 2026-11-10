@@ -1,0 +1,154 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect your Assist pipeline",
+        "description": "Start the local Sentient Voice Engine app, then choose the speech-to-text provider and Sentient conversation agent that your pipeline already uses.",
+        "data": {
+          "stt_provider": "Existing speech-to-text provider",
+          "conversation_agent": "Existing Sentient conversation agent",
+          "match_threshold": "Minimum speaker similarity",
+          "share_name": "Give matched names to the conversation agent",
+          "engine_token": "Sentient Voice Engine token",
+          "engine_install": "Voice Engine installation"
+        },
+        "data_description": {
+          "match_threshold": "Start at 0.65. Higher values give more unknown results and fewer tentative matches.",
+          "share_name": "Enable this for spoken personalization. If your conversation agent uses a cloud AI model, it may receive the matched display name.",
+          "engine_install": "Choose where you installed the Sentient Voice Engine app."
+        }
+      }
+    },
+    "error": {
+      "provider_unavailable": "This provider is unavailable. Check that it is installed and enabled.",
+      "recursive_provider": "Select the original provider, not the Voice Recognition adapter.",
+      "invalid_token": "Use the same token configured in the engine app. It must contain 24–128 letters, numbers, hyphens or underscores.",
+      "engine_unavailable": "Check that Sentient Voice Engine is running, that its token matches and that the installation type is correct. Reselect any recording before retrying."
+    },
+    "abort": {
+      "already_configured": "Sentient Voice Recognition is already configured.",
+      "already_in_progress": "Another setup is already in progress."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sentient Voice Recognition",
+        "menu_options": {
+          "settings": "Voice pipeline and matching settings",
+          "profiles": "Voice profiles"
+        }
+      },
+      "settings": {
+        "title": "Voice pipeline and matching settings",
+        "data": {
+          "stt_provider": "Existing speech-to-text provider",
+          "conversation_agent": "Existing Sentient conversation agent",
+          "match_threshold": "Minimum speaker similarity",
+          "share_name": "Give matched names to the conversation agent",
+          "engine_token": "Sentient Voice Engine token",
+          "engine_install": "Voice Engine installation"
+        },
+        "data_description": {
+          "engine_token": "Leave blank to keep the saved engine token.",
+          "engine_install": "Choose where you installed the Sentient Voice Engine app."
+        }
+      },
+      "enroll": {
+        "title": "Add a person",
+        "description": "Upload three different 16-bit PCM WAV recordings of the same person speaking alone. Aim for 4–8 seconds of speech in each file. Home Assistant deletes processed uploads and stores a local voice template.",
+        "data": {
+          "name": "Display name",
+          "sample_one": "First WAV sample",
+          "sample_two": "Second WAV sample",
+          "sample_three": "Third WAV sample",
+          "consent": "This person agreed to enroll their voice"
+        }
+      },
+      "delete": {
+        "title": "Delete a voice profile",
+        "description": "Choose the profile to remove. This removes its template from the live integration.",
+        "data": {
+          "profile": "Voice profile",
+          "confirm": "I confirm removal of the selected person's profile"
+        }
+      },
+      "profiles": {
+        "title": "Voice profiles",
+        "description": "{count} people enrolled. Create one profile per person.",
+        "menu_options": {
+          "enroll": "Add a person",
+          "test": "Test a recording",
+          "rename": "Rename a profile",
+          "retrain": "Replace a person's samples",
+          "delete": "Delete a profile"
+        }
+      },
+      "retrain": {
+        "title": "Replace a person's samples",
+        "description": "Use three fresh recordings of the selected person. The current template is replaced only after all three samples pass validation. The profile keeps its name and speaker ID.",
+        "data": {
+          "profile": "Person",
+          "sample_one": "First WAV sample",
+          "sample_two": "Second WAV sample",
+          "sample_three": "Third WAV sample",
+          "consent": "This person agreed to enroll their voice"
+        }
+      },
+      "rename": {
+        "title": "Rename a profile",
+        "description": "Update the display name. The person keeps the same speaker ID and voice template.",
+        "data": {
+          "profile": "Person",
+          "name": "New display name"
+        }
+      },
+      "test": {
+        "title": "Test a recording",
+        "description": "Use a fresh WAV recording that was not used for enrollment. Choose the expected person or Unknown speaker to get a pass or fail. This test runs locally and does not trigger Sentient or automations.",
+        "data": {
+          "sample": "Test WAV recording",
+          "expected": "Expected result"
+        }
+      }
+    },
+    "error": {
+      "provider_unavailable": "This provider is unavailable. Check that it is installed and enabled.",
+      "recursive_provider": "Select the original provider, not the Voice Recognition adapter.",
+      "consent_required": "Confirm that the person agreed to enroll their voice.",
+      "invalid_name": "Enter a name up to 40 characters using letters, spaces, periods, apostrophes or hyphens.",
+      "duplicate_name": "A profile with this name already exists.",
+      "profile_limit": "The maximum of 16 voice profiles is already enrolled.",
+      "bad_samples": "Upload three distinct PCM WAV files with clear speech from the same person. Use 16-bit mono or stereo audio, 8–48 kHz, and files of at most 20 seconds. Please reselect all three files.",
+      "profile_missing": "The selected profile has already been removed.",
+      "storage_error": "Home Assistant could not save the change. Check storage and try again.",
+      "invalid_token": "Use the same token configured in the engine app. It must contain 24–128 letters, numbers, hyphens or underscores.",
+      "engine_unavailable": "Check that Sentient Voice Engine is running, that its token matches and that the installation type is correct. Reselect any recording before retrying.",
+      "confirm_delete": "Confirm that you want to delete this voice profile.",
+      "duplicate_voice": "These samples closely match another profile. Check the person you selected and use fresh recordings before trying again.",
+      "bad_test_sample": "Select a fresh 16-bit PCM WAV with clear speech from one person, up to 20 seconds. Then try again.",
+      "engine_busy": "Voice Engine is busy. Wait for the current request to finish, then select your recording again.",
+      "no_profiles": "Enroll a person before testing a recording.",
+      "integration_reloaded": "Voice Recognition was reloaded. Reopen Configure and try again."
+    },
+    "abort": {
+      "not_loaded": "The integration is still loading. Try again when setup is complete.",
+      "profile_enrolled": "The voice profile is enrolled.",
+      "profile_deleted": "The voice profile was deleted.",
+      "profile_renamed": "The display name was updated.",
+      "profile_retrained": "The profile was updated with the new samples.",
+      "no_profiles": "Enroll a person first.",
+      "test_complete": "**Voice test complete**\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
+      "test_passed": "**Voice test passed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}",
+      "test_failed": "**Voice test failed**\n\nExpected {expected}.\n\n**Detected:** {speaker}  \n**Decision:** {decision}  \n**Best similarity:** {score} (minimum {threshold})  \n**Lead over the next profile:** {lead}"
+    }
+  },
+  "selector": {
+    "engine_install": {
+      "options": {
+        "repository": "GitHub app repository",
+        "local": "Local app folder"
+      }
+    }
+  }
+}

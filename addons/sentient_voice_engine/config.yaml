@@ -1,0 +1,15 @@
+name: Sentient Voice Engine
+version: "0.1.0"
+slug: sentient_voice_engine
+url: https://github.com/conahmorgan2304/sentient-voice-recognition
+description: Local speaker embeddings for Sentient Voice Recognition
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+homeassistant: "2026.11.0"
+options:
+  token: ""
+schema:
+  token: password
