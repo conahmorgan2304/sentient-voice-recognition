@@ -1,4 +1,6 @@
 {
+  "domain": "sentient_voice_recognition",
+  "name": "Sentient Voice Recognition",
   "codeowners": [
     "@conahmorgan2304"
   ],
@@ -14,11 +16,9 @@
     "websocket_api"
   ],
   "documentation": "https://github.com/conahmorgan2304/sentient-voice-recognition",
-  "domain": "sentient_voice_recognition",
   "integration_type": "service",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/conahmorgan2304/sentient-voice-recognition/issues",
-  "name": "Sentient Voice Recognition",
   "requirements": [],
   "version": "0.2.6"
 }

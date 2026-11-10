@@ -89,6 +89,6 @@ Voice Recognition supplies identity for a single turn. Sentient's own conversati
 
 ## Development
 
-Run the tests with `pip install pytest-homeassistant-custom-component && pytest -q`. They cover the engine endpoint (authentication, size limits, error mapping) and the per-turn speaker lookup, without needing the voice models. The Validate workflow also runs hassfest and HACS checks.
+Run the tests with `pip install -r requirements_test.txt && pytest -q`. They cover the engine endpoint (authentication, size limits, error mapping) and the per-turn speaker lookup, without needing the voice models. The Validate workflow also runs hassfest and HACS checks.
 
 Licence: MIT.
