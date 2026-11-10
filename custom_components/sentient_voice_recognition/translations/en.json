@@ -185,6 +185,20 @@
     "cancel_speaker_enrolment": {
       "name": "Cancel recording from a speaker",
       "description": "Closes an open recording window without saving anything."
+    },
+    "status": {
+      "name": "Voice recognition status",
+      "description": "Reports whether the voice engine is reachable, each saved voice and how close the nearest other voice is, and the match level."
+    },
+    "set_match_threshold": {
+      "name": "Set the match level",
+      "description": "Changes how similar a voice must be to be matched (0.50 to 0.90). Lower matches more easily but risks a wrong name.",
+      "fields": {
+        "value": {
+          "name": "Match level",
+          "description": "Between 0.50 and 0.90."
+        }
+      }
     }
   }
 }

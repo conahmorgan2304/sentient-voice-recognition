@@ -9,7 +9,7 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_ENGINE_INSTALL, CONF_TOKEN, DOMAIN, RECORDER_PATH
+from .const import CONF_ENGINE_INSTALL, CONF_THRESHOLD, CONF_TOKEN, DEFAULT_THRESHOLD, DOMAIN, RECORDER_PATH
 from .recorder import async_register_recorder, async_setup_recorder
 from .recognition import EngineClient, engine_url
 from .runtime import ProfileError, Runtime, profile_store
@@ -42,6 +42,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def cancel_enrolment(call: ServiceCall) -> None:
         runtime().cancel_satellite_enrollment()
 
+    async def status(call: ServiceCall) -> dict:
+        for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+            try:
+                await entry.runtime_data.engine.async_check()
+                engine = True
+            except Exception:  # any fault means the engine can't be used right now
+                engine = False
+            return {"engine": engine, "profiles": entry.runtime_data.distinctness(),
+                    "threshold": entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)}
+        raise ServiceValidationError("Sentient Voice Recognition isn't running.")
+
+    async def set_threshold(call: ServiceCall) -> None:
+        for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+            hass.config_entries.async_update_entry(entry, options={**entry.options, CONF_THRESHOLD: call.data["value"]})
+            return
+        raise ServiceValidationError("Sentient Voice Recognition isn't running.")
+
+    hass.services.async_register(DOMAIN, "status", status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(
+        DOMAIN, "set_match_threshold", set_threshold,
+        schema=vol.Schema({vol.Required("value"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=0.9))}))
     hass.services.async_register(
         DOMAIN, "start_speaker_enrolment", start_enrolment,
         schema=vol.Schema({vol.Required("name"): cv.string}), supports_response=SupportsResponse.ONLY)

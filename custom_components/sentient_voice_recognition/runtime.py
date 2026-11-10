@@ -27,6 +27,9 @@ DUPLICATE_PROFILE_SIMILARITY = 0.85
 ENGINE_RETRY_SECONDS = 5
 
 
+STEADY_TAKES = 0.5  # below this the three samples differ a lot
+
+
 @dataclass(frozen=True, slots=True)
 class Profile:
     name: str
@@ -210,8 +213,10 @@ class Runtime:
         *,
         speaker_id: str | None = None,
         recordings: tuple[bytes, ...] | None = None,
-    ) -> None:
-        """Create a profile or replace its template while retaining its ID."""
+    ) -> float:
+        """Create a profile or replace its template while retaining its ID.
+
+        Returns how alike the three samples were (the lowest pairwise score): higher means a steadier recording."""
         if len(files if recordings is None else recordings) != 3:
             raise ProfileError("bad_samples")
         for index, file_id in enumerate(files):
@@ -229,9 +234,11 @@ class Runtime:
                 if recordings is None
                 else await self._async_embed_samples(recordings)
             )
+            consistency = 1.0
             for index, vector in enumerate(vectors):
                 for other in vectors[:index]:
                     score = cosine(vector, other)
+                    consistency = min(consistency, score)
                     if score > 0.99999:
                         raise ProfileError("sample_duplicate", index)
                     if score < MIN_ENROLLMENT_SIMILARITY:
@@ -244,6 +251,7 @@ class Runtime:
                 raise ProfileError("duplicate_voice")
             key = speaker_id or uuid4().hex
             await self._async_save({**self.profiles, key: Profile(name, vector)})
+            return round(consistency, 2)
 
     # ----- enrolling from a speaker --------------------------------------------------------------------------
     @property
@@ -269,6 +277,16 @@ class Runtime:
         self.enrollment = SatelliteEnrollment(name, existing, monotonic() + WINDOW_SECONDS)
         return SENTENCES[0]
 
+    def distinctness(self) -> list[dict]:
+        """Each saved voice and how close the nearest other voice is (high means they could be confused)."""
+        out = []
+        for key, profile in self.profiles.items():
+            others = [(cosine(profile.vector, o.vector), o.name) for k, o in self.profiles.items() if k != key]
+            best = max(others, default=None)
+            out.append({"name": profile.name, "nearest": best[1] if best else None,
+                        "nearest_score": round(best[0], 2) if best else None})
+        return out
+
     def cancel_satellite_enrollment(self) -> None:
         """Close an open speaker enrolment without saving anything."""
         self.enrollment = None
@@ -293,12 +311,14 @@ class Runtime:
             return f"Thanks. Now say: {SENTENCES[len(e.takes)]}", True
         self.enrollment = None
         try:
-            await self.async_enroll(e.name, speaker_id=e.speaker_id, recordings=tuple(e.takes))
+            consistency = await self.async_enroll(e.name, speaker_id=e.speaker_id, recordings=tuple(e.takes))
         except ProfileError as err:
             _LOGGER.debug("Speaker enrolment failed: %s", err.args[0])
             return ("That didn't quite work, because the three recordings didn't sound like the same person "
                     "or matched another saved voice. Start it again from the settings."), False
-        return f"All done. I've saved {e.name}'s voice from this speaker.", False
+        note = ("" if consistency >= STEADY_TAKES else " The three recordings varied quite a bit, so if matching is "
+                "unreliable, record again somewhere quieter.")
+        return f"All done. I've saved {e.name}'s voice from this speaker.{note}", False
 
     async def async_rename(self, speaker_id: str, name: str) -> None:
         """Change a display name without changing the speaker ID or template."""
