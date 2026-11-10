@@ -269,6 +269,10 @@ class Runtime:
         self.enrollment = SatelliteEnrollment(name, existing, monotonic() + WINDOW_SECONDS)
         return SENTENCES[0]
 
+    def cancel_satellite_enrollment(self) -> None:
+        """Close an open speaker enrolment without saving anything."""
+        self.enrollment = None
+
     async def async_satellite_take(self, pcm: bytes) -> tuple[str, bool]:
         """Take one spoken sample: returns what the speaker says next and whether to keep listening."""
         if not self.enrolling:
