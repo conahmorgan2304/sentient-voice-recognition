@@ -72,6 +72,10 @@ class TurnHandoff:
 class ProfileError(ValueError):
     """An error that can be displayed in the enrollment form."""
 
+    def __init__(self, code: str, sample_index: int | None = None) -> None:
+        super().__init__(code)
+        self.sample_index = sample_index
+
 
 def profile_store(hass: HomeAssistant, entry_id: str) -> Store:
     """Use an atomic, owner-only store for biometric templates."""
@@ -121,20 +125,31 @@ class Runtime:
             raise ProfileError("integration_reloaded")
 
     def _read_uploads(self, file_ids: tuple[str, ...]) -> tuple[bytes, ...]:
+        invalid_sample = "sample_unreadable" if len(file_ids) > 1 else "bad_test_sample"
         with ExitStack() as stack:
-            paths = tuple(
-                stack.enter_context(process_uploaded_file(self.hass, file_id))
-                for file_id in file_ids
-            )
+            paths = []
+            missing_index = None
+            for index, file_id in enumerate(file_ids):
+                try:
+                    paths.append(stack.enter_context(process_uploaded_file(self.hass, file_id)))
+                except (ValueError, OSError):
+                    if missing_index is None:
+                        missing_index = index
+            if missing_index is not None:
+                raise ProfileError(invalid_sample, missing_index)
+
             files = []
-            for path in paths:
-                with path.open("rb") as stream:
-                    audio = stream.read(MAX_WAV_BYTES + 1)
+            for index, path in enumerate(paths):
+                try:
+                    with path.open("rb") as stream:
+                        audio = stream.read(MAX_WAV_BYTES + 1)
+                except OSError as err:
+                    raise ProfileError(invalid_sample, index) from err
                 if not audio or len(audio) > MAX_WAV_BYTES:
-                    raise BadSample
+                    raise ProfileError(invalid_sample, index)
+                if audio in files:
+                    raise ProfileError("sample_duplicate", index)
                 files.append(audio)
-            if len(set(files)) != len(files):
-                raise BadSample
             return tuple(files)
 
     def _check_name(self, name: str, speaker_id: str | None) -> str:
@@ -159,23 +174,32 @@ class Runtime:
         invalid_sample = "bad_samples" if len(files) > 1 else "bad_test_sample"
         try:
             samples = await self.hass.async_add_executor_job(self._read_uploads, files)
+        except ProfileError:
+            raise
         except (ValueError, OSError) as err:
             raise ProfileError(invalid_sample) from err
+        vectors = []
         try:
-            return [await self.engine.async_embed(sample, wav=True) for sample in samples]
-        except BadSample as err:
-            raise ProfileError(invalid_sample) from err
+            for index, sample in enumerate(samples):
+                vectors.append(await self.engine.async_embed(sample, wav=True))
         except EngineBusy as err:
             raise ProfileError("engine_busy") from err
+        except BadSample as err:
+            code = "sample_unusable" if len(samples) > 1 else "bad_test_sample"
+            raise ProfileError(code, index) from err
         except (TimeoutError, aiohttp.ClientError, ValueError, KeyError, TypeError) as err:
             raise ProfileError("engine_unavailable") from err
+        return vectors
 
     async def async_enroll(
         self, name: str, files: tuple[str, ...], *, speaker_id: str | None = None
     ) -> None:
         """Create a profile or replace its template while retaining its ID."""
-        if len(files) != 3 or len(set(files)) != 3:
+        if len(files) != 3:
             raise ProfileError("bad_samples")
+        for index, file_id in enumerate(files):
+            if file_id in files[:index]:
+                raise ProfileError("sample_duplicate", index)
         async with self._edit_lock:
             self._check_open()
             if speaker_id is not None:
@@ -184,11 +208,13 @@ class Runtime:
                 raise ProfileError("profile_limit")
             name = self._check_name(name, speaker_id)
             vectors = await self._async_embed_uploads(files)
-            if any(
-                not MIN_ENROLLMENT_SIMILARITY <= cosine(vector, other) <= 0.99999
-                for index, vector in enumerate(vectors) for other in vectors[:index]
-            ):
-                raise ProfileError("bad_samples")
+            for index, vector in enumerate(vectors):
+                for other in vectors[:index]:
+                    score = cosine(vector, other)
+                    if score > 0.99999:
+                        raise ProfileError("sample_duplicate", index)
+                    if score < MIN_ENROLLMENT_SIMILARITY:
+                        raise ProfileError("samples_inconsistent")
             vector = normalized(sum(values) for values in zip(*vectors, strict=True))
             if any(
                 key != speaker_id and cosine(vector, profile.vector) >= DUPLICATE_PROFILE_SIMILARITY

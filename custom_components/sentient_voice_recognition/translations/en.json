@@ -56,7 +56,7 @@
       },
       "enroll": {
         "title": "Add a person",
-        "description": "Upload three different 16-bit PCM WAV recordings of the same person speaking alone. Aim for 4–8 seconds of speech in each file. Home Assistant deletes processed uploads and stores a local voice template.",
+        "description": "Record each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “Could you turn on the living room lamp and tell me what the weather will be like tomorrow?”\n2. “I'd like to know how warm it is upstairs before I open the bedroom window for a while.”\n3. “Please check whether the back door is closed, then tell me if any lights are still on downstairs.”",
         "data": {
           "name": "Display name",
           "sample_one": "First WAV sample",
@@ -86,7 +86,7 @@
       },
       "retrain": {
         "title": "Replace a person's samples",
-        "description": "Use three fresh recordings of the selected person. The current template is replaced only after all three samples pass validation. The profile keeps its name and speaker ID.",
+        "description": "Choose a person and make three fresh recordings. Saving them keeps the same speaker ID.\n\nRecord each line as a separate WAV. Use your normal speaking voice and aim for 4–8 seconds of clear speech per file. Keep other voices and the TV out of the recording. The words are examples, so you can also use your own sentences.\n\n1. “Could you turn on the living room lamp and tell me what the weather will be like tomorrow?”\n2. “I'd like to know how warm it is upstairs before I open the bedroom window for a while.”\n3. “Please check whether the back door is closed, then tell me if any lights are still on downstairs.”",
         "data": {
           "profile": "Person",
           "sample_one": "First WAV sample",
@@ -129,7 +129,11 @@
       "bad_test_sample": "Select a fresh 16-bit PCM WAV with clear speech from one person, up to 20 seconds. Then try again.",
       "engine_busy": "Voice Engine is busy. Wait for the current request to finish, then select your recording again.",
       "no_profiles": "Enroll a person before testing a recording.",
-      "integration_reloaded": "Voice Recognition was reloaded. Reopen Configure and try again."
+      "integration_reloaded": "Voice Recognition was reloaded. Reopen Configure and try again.",
+      "sample_unreadable": "This upload could not be read. Choose a nonempty WAV recording and reselect all three files.",
+      "sample_duplicate": "This sounds like a recording you already selected. Record a new take and reselect all three files.",
+      "sample_unusable": "This clip could not be used. Check that it is 16-bit PCM WAV, no more than 20 seconds long, with 4–8 seconds of clear speech. Reselect all three files.",
+      "samples_inconsistent": "The three recordings sound too different. Record the same person speaking alone at a similar distance from the microphone, then select three fresh files."
     },
     "abort": {
       "not_loaded": "The integration is still loading. Try again when setup is complete.",

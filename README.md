@@ -1,4 +1,4 @@
-# Sentient Voice Recognition 0.2.1
+# Sentient Voice Recognition 0.2.2
 
 A separate Home Assistant OS integration that estimates who spoke an Assist command. The Voice Recognition STT adapter passes the original microphone stream to your existing speech-to-text provider while collecting a short copy in memory. The local Sentient Voice Engine compares that audio to enrolled voice profiles. The Voice Recognition conversation adapter passes the original request to Sentient, along with the likely display name if you enable that option.
 
@@ -34,6 +34,14 @@ Existing 0.1.0 and 0.2.0 installations load their profiles with the same speaker
 ## Set up one profile per person
 
 Open **Settings → Devices & services → Sentient Voice Recognition → Configure → Voice profiles → Add a person**. Repeat for each household member. Enter a display name and confirm that the person agreed to enroll. Upload three different WAV recordings of that person speaking alone. Aim for **4–8 seconds** of normal speech per recording and use different sentences. The form accepts 16-bit PCM WAV, mono or stereo, at 8–48 kHz, up to 20 seconds per file. Use a normal speaking voice and try to capture the distance and background noise of ordinary use. If the kitchen and living room sound different, include recordings that reflect both rooms.
+
+**Suggested read-aloud script**
+
+1. “Could you turn on the living room lamp and tell me what the weather will be like tomorrow?”
+2. “I'd like to know how warm it is upstairs before I open the bedroom window for a while.”
+3. “Please check whether the back door is closed, then tell me if any lights are still on downstairs.”
+
+Save each line as its own WAV. The same prompts appear in the enrollment form. If an upload fails, the form can point to an unreadable, repeated or unusable recording.
 
 If your recorder produces an M4A file, this converts it to the format the form expects.
 

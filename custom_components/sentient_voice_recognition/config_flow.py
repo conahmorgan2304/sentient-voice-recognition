@@ -225,7 +225,8 @@ class VoiceRecognitionOptions(OptionsFlowWithReload):
                     speaker_id=user_input.get("profile") if retrain else None,
                 )
             except ProfileError as err:
-                errors["base"] = str(err)
+                field = _SAMPLE_FIELDS[err.sample_index] if err.sample_index is not None else "base"
+                errors[field] = str(err)
             except OSError:
                 errors["base"] = "storage_error"
             else:
