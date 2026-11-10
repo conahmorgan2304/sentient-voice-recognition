@@ -5,13 +5,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_ENGINE_INSTALL, CONF_TOKEN, RECORDER_PATH
+from .const import CONF_ENGINE_INSTALL, CONF_TOKEN, DOMAIN, RECORDER_PATH
 from .recorder import async_register_recorder, async_setup_recorder
 from .recognition import EngineClient, engine_url
 from .runtime import Runtime, profile_store
 from .speaker_context import SPEAKER_FOR_TURN, speaker_for_turn
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type VoiceRecognitionEntry = ConfigEntry[Runtime]
 PLATFORMS = (Platform.STT, Platform.CONVERSATION)
