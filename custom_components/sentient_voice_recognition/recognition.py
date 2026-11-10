@@ -9,8 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    ENGINE_DIMENSION, ENGINE_INSTALL_REPOSITORY, ENGINE_URL, MIN_MARGIN,
-    REPOSITORY_ENGINE_URL,
+    ENGINE_DIMENSION, ENGINE_INSTALL_REPOSITORY, ENGINE_URL, LIVE_EMBED_TIMEOUT, MIN_MARGIN,
+    REPOSITORY_ENGINE_URL, UPLOAD_EMBED_TIMEOUT,
 )
 
 type Vector = tuple[float, ...]
@@ -104,7 +104,7 @@ class EngineClient:
             f"{self._url}/v1/embedding",
             data=audio,
             headers=headers,
-            timeout=aiohttp.ClientTimeout(total=5 if wav else 0.7),
+            timeout=aiohttp.ClientTimeout(total=UPLOAD_EMBED_TIMEOUT if wav else LIVE_EMBED_TIMEOUT),
             allow_redirects=False,
         ) as response:
             if response.status == 422:
