@@ -5,6 +5,7 @@ TITLE = "Sentient Voice Recognition"
 CONF_STT = "stt_provider"
 CONF_AGENT = "conversation_agent"
 CONF_THRESHOLD = "match_threshold"
+CONF_LOCAL_SPEAKER = "local_speaker"
 CONF_SHARE_NAME = "share_name"
 DEFAULT_THRESHOLD = 0.65
 MIN_MARGIN = 0.10

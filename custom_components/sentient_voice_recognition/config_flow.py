@@ -28,6 +28,7 @@ import probatio
 from .const import (
     CONF_AGENT,
     CONF_ENGINE_INSTALL,
+    CONF_LOCAL_SPEAKER,
     CONF_SHARE_NAME,
     CONF_STT,
     CONF_THRESHOLD,
@@ -84,6 +85,7 @@ def _settings(
         probatio.Required(CONF_THRESHOLD, default=DEFAULT_THRESHOLD): probatio.All(
             probatio.Coerce(float), probatio.Range(min=0.5, max=0.9)
         ),
+        probatio.Required(CONF_LOCAL_SPEAKER, default=False): bool,
         probatio.Required(CONF_SHARE_NAME, default=False): bool,
     }
     default_install = ENGINE_INSTALL_LOCAL if reconfigure else ENGINE_INSTALL_REPOSITORY

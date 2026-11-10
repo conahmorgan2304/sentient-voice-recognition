@@ -10,7 +10,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from . import VoiceRecognitionEntry
-from .const import CONF_AGENT, CONF_SHARE_NAME, EVENT_IDENTIFIED
+from .const import CONF_AGENT, CONF_LOCAL_SPEAKER, CONF_SHARE_NAME, EVENT_IDENTIFIED
+from .speaker_context import SpeakerTurn, speaker_turn
 
 
 async def async_setup_entry(
@@ -76,13 +77,17 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
 
         runtime = self._entry.runtime_data
         prompt = user_input.extra_system_prompt
+        local_result = None
         if (match := runtime.handoff.consume(user_input.text)) is not None:
             profile = runtime.profiles.get(match.speaker_id)
+            speaker = SpeakerTurn(match.speaker_id, profile.name) if profile else SpeakerTurn(None, None)
+            if self._entry.options.get(CONF_LOCAL_SPEAKER):
+                local_result = speaker
             self.hass.bus.async_fire(
                 EVENT_IDENTIFIED,
                 {
-                    "speaker_id": match.speaker_id if profile else None,
-                    "speaker_name": profile.name if profile else None,
+                    "speaker_id": speaker.speaker_id,
+                    "speaker_name": speaker.display_name,
                     "similarity": round(match.score, 3) if match.score is not None else None,
                     "runner_up_gap": round(match.lead, 3) if match.lead is not None else None,
                     "reason": "profile_removed" if match.speaker_id and not profile else match.reason,
@@ -92,21 +97,23 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
                 context=user_input.context,
             )
             if self._entry.options.get(CONF_SHARE_NAME):
-                identity = json.dumps({"likely_speaker_name": profile.name if profile else None})
+                identity = json.dumps({"likely_speaker_name": speaker.display_name})
                 prompt = (
                     f"{prompt or ''}\nLocal voice identification for this turn: {identity}. "
                     "Use a supplied name only for conversational personalization. "
                     "A null name means the speaker is unknown. Do not infer authorization from this result."
                 ).lstrip("\n")
 
-        return await conversation.async_converse(
-            self.hass,
-            text=user_input.text,
-            conversation_id=user_input.conversation_id,
-            context=user_input.context,
-            language=user_input.language,
-            agent_id=self._agent_id,
-            device_id=user_input.device_id,
-            satellite_id=user_input.satellite_id,
-            extra_system_prompt=prompt,
-        )
+        agent_id = self._agent_id
+        with speaker_turn(user_input, agent_id, local_result):
+            return await conversation.async_converse(
+                self.hass,
+                text=user_input.text,
+                conversation_id=user_input.conversation_id,
+                context=user_input.context,
+                language=user_input.language,
+                agent_id=agent_id,
+                device_id=user_input.device_id,
+                satellite_id=user_input.satellite_id,
+                extra_system_prompt=prompt,
+            )

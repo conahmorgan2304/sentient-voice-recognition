@@ -8,12 +8,14 @@
           "stt_provider": "Existing speech-to-text provider",
           "conversation_agent": "Existing Sentient conversation agent",
           "match_threshold": "Minimum speaker similarity",
+          "local_speaker": "Let Sentient identify speakers locally",
           "share_name": "Give matched names to the conversation agent",
           "engine_token": "Sentient Voice Engine token",
           "engine_install": "Voice Engine installation"
         },
         "data_description": {
           "match_threshold": "Start at 0.65. Higher values give more unknown results and fewer tentative matches.",
+          "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
           "share_name": "Enable this for spoken personalization. If your conversation agent uses a cloud AI model, it may receive the matched display name.",
           "engine_install": "Choose where you installed the Sentient Voice Engine app."
         }
@@ -45,11 +47,14 @@
           "stt_provider": "Existing speech-to-text provider",
           "conversation_agent": "Existing Sentient conversation agent",
           "match_threshold": "Minimum speaker similarity",
+          "local_speaker": "Let Sentient identify speakers locally",
           "share_name": "Give matched names to the conversation agent",
           "engine_token": "Sentient Voice Engine token",
           "engine_install": "Voice Engine installation"
         },
         "data_description": {
+          "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
+          "share_name": "If your conversation agent uses a cloud AI model, it may receive the matched display name.",
           "engine_token": "Leave blank to keep the saved engine token.",
           "engine_install": "Choose where you installed the Sentient Voice Engine app."
         }

@@ -11,14 +11,16 @@ from .const import CONF_ENGINE_INSTALL, CONF_TOKEN, RECORDER_PATH
 from .recorder import async_register_recorder, async_setup_recorder
 from .recognition import EngineClient, engine_url
 from .runtime import Runtime, profile_store
+from .speaker_context import SPEAKER_FOR_TURN, speaker_for_turn
 
 type VoiceRecognitionEntry = ConfigEntry[Runtime]
 PLATFORMS = (Platform.STT, Platform.CONVERSATION)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the recorder's assets and API."""
+    """Register the recorder and the optional local speaker lookup."""
     await async_setup_recorder(hass)
+    hass.data[SPEAKER_FOR_TURN] = speaker_for_turn
     return True
 
 
