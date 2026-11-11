@@ -29,12 +29,21 @@ ENGINE_RETRY_SECONDS = 5
 
 
 STEADY_TAKES = 0.5  # below this the three samples differ a lot
+CARRY_SECONDS = 90  # how long a match stays with a speaker for follow-ups too short to judge
+LEARN_FLOOR = 0.75  # only a match at least this alike teaches the profile anything
+LEARN_MARGIN = 0.10  # and at least this far above the match level
+LEARN_LEAD = 0.20  # and this far ahead of every other saved voice
+LEARN_RATE = 0.10  # how far one lesson moves the profile towards what was heard
+LEARN_EVERY = 600  # seconds between lessons for one person
+LEARN_ANCHOR = 0.90  # a learned profile never drifts further than this from the recorded samples
+LEARN_SAVE_DELAY = 60
 
 
 @dataclass(frozen=True, slots=True)
 class Profile:
     name: str
     vector: Vector
+    anchor: Vector | None = None  # the recorded samples, kept once learning has moved `vector`
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +121,9 @@ class Runtime:
         self._retry_at = 0.0
         self.enrollment: SatelliteEnrollment | None = None
         self._enrollment_timer: asyncio.TimerHandle | None = None
+        self.adaptive = False
+        self._recent: dict[str, tuple[str, float]] = {}
+        self._learned_at: dict[str, float] = {}
 
     async def async_load(self) -> None:
         """Load profiles created for the current speaker model."""
@@ -119,18 +131,68 @@ class Runtime:
         if data is None:
             return
         for speaker_id, item in data["profiles"].items():
-            self.profiles[speaker_id] = Profile(item["name"], normalized(item["vector"]))
+            anchor = normalized(item["anchor"]) if item.get("anchor") else None
+            self.profiles[speaker_id] = Profile(item["name"], normalized(item["vector"]), anchor)
+
+    @staticmethod
+    def _data(profiles: dict[str, Profile]) -> dict:
+        return {
+            "profiles": {
+                key: {"name": profile.name, "vector": list(profile.vector),
+                      **({"anchor": list(profile.anchor)} if profile.anchor is not None else {})}
+                for key, profile in profiles.items()
+            }
+        }
 
     async def _async_save(self, profiles: dict[str, Profile]) -> None:
-        await self._store.async_save(
-            {
-                "profiles": {
-                    key: {"name": profile.name, "vector": list(profile.vector)}
-                    for key, profile in profiles.items()
-                }
-            }
-        )
+        await self._store.async_save(self._data(profiles))
         self.profiles = profiles
+
+    # ----- a match carried through a conversation ------------------------------------------------------------
+    def remember_speaker(self, where: str | None, speaker_id: str) -> None:
+        """Note who was just matched on this speaker (in memory only)."""
+        if where:
+            self._recent[where] = (speaker_id, monotonic() + CARRY_SECONDS)
+
+    def recent_speaker(self, where: str | None) -> str | None:
+        """Who was matched on this speaker a moment ago, if anyone."""
+        if not where or (kept := self._recent.get(where)) is None:
+            return None
+        if kept[1] < monotonic():
+            del self._recent[where]
+            return None
+        return kept[0]
+
+    def forget_speaker(self, where: str | None) -> None:
+        self._recent.pop(where, None)
+
+    # ----- learning from strong matches ----------------------------------------------------------------------
+    def _learn(self, match: Match, heard: Vector, threshold: float) -> None:
+        """Move a profile a little towards a very confident match, so it suits each room's microphone.
+
+        Only a clear match teaches anything, lessons are spaced out, and the result stays close to the
+        recorded samples, so a stranger or one odd room can never take a profile over."""
+        if (
+            match.speaker_id is None or match.score is None
+            or match.score < max(LEARN_FLOOR, threshold + LEARN_MARGIN)
+            or (match.lead is not None and match.lead < LEARN_LEAD)
+            or self._closed or self._edit_lock.locked()
+            or (profile := self.profiles.get(match.speaker_id)) is None
+            or monotonic() < self._learned_at.get(match.speaker_id, 0.0)
+        ):
+            return
+        anchor = profile.anchor or profile.vector
+        try:
+            learned = normalized(
+                old * (1 - LEARN_RATE) + new * LEARN_RATE for old, new in zip(profile.vector, heard, strict=True)
+            )
+        except ValueError:
+            return
+        if cosine(learned, anchor) < LEARN_ANCHOR:
+            return
+        self._learned_at[match.speaker_id] = monotonic() + LEARN_EVERY
+        self.profiles = {**self.profiles, match.speaker_id: Profile(profile.name, learned, anchor)}
+        self._store.async_delay_save(lambda: self._data(self.profiles), LEARN_SAVE_DELAY)
 
     async def async_close(self) -> None:
         """Finish any profile write before a new runtime loads the store."""
@@ -380,7 +442,7 @@ class Runtime:
             profile = self._get_profile(speaker_id)
             name = self._check_name(name, speaker_id)
             if name != profile.name:
-                await self._async_save({**self.profiles, speaker_id: Profile(name, profile.vector)})
+                await self._async_save({**self.profiles, speaker_id: Profile(name, profile.vector, profile.anchor)})
 
     async def async_test(self, file_id: str, threshold: float) -> Match:
         """Score an uploaded WAV against the same profiles as a live Assist turn."""
@@ -417,7 +479,10 @@ class Runtime:
         self._recognizing = True
         try:
             vector = await self.engine.async_embed(pcm, wav=False)
-            return self._identify(vector, threshold)
+            match = self._identify(vector, threshold)
+            if self.adaptive:
+                self._learn(match, vector, threshold)
+            return match
         except BadSample:
             return Match(None, None, "insufficient_speech")
         except EngineBusy:

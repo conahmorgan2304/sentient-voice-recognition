@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.service import async_register_admin_service
 
-from .const import CONF_ENGINE_INSTALL, CONF_THRESHOLD, CONF_TOKEN, DEFAULT_THRESHOLD, DOMAIN, RECORDER_PATH
+from .const import CONF_ADAPT, CONF_ENGINE_INSTALL, CONF_THRESHOLD, CONF_TOKEN, DEFAULT_THRESHOLD, DOMAIN, RECORDER_PATH
 from .recorder import async_register_recorder, async_setup_recorder
 from .recognition import EngineClient, engine_url
 from .runtime import ProfileError, Runtime, profile_store
@@ -83,6 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: VoiceRecognitionEntry) -
         hass, entry.options[CONF_TOKEN], engine_url(entry.options.get(CONF_ENGINE_INSTALL))
     )
     runtime = Runtime(hass, entry.entry_id, engine)
+    runtime.adaptive = bool(entry.options.get(CONF_ADAPT))
     try:
         await runtime.async_load()
     except (OSError, ValueError, KeyError, TypeError) as err:

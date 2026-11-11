@@ -2,7 +2,10 @@
 
 import json
 
+import logging
+
 from homeassistant.components import conversation
+from homeassistant.components.conversation.chat_log import current_chat_log
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -11,9 +14,21 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from . import VoiceRecognitionEntry
-from .const import CONF_AGENT, CONF_LOCAL_SPEAKER, CONF_SHARE_NAME, EVENT_IDENTIFIED
+from .const import (
+    CONF_AGENT, CONF_CARRY, CONF_LOCAL_COMMANDS, CONF_LOCAL_SPEAKER, CONF_SHARE_NAME, EVENT_IDENTIFIED,
+)
+from .recognition import Match
 from .satellite import sample_index
 from .speaker_context import SpeakerTurn, speaker_turn
+
+_LOGGER = logging.getLogger(__name__)
+# Home Assistant's own sentences that the agent answers better, or that belong to its conversation.
+LEFT_FOR_THE_AGENT = frozenset({"HassGetState", "HassMediaSearchAndPlay", "HassNevermind", "HassRespond", "HassGetWeather"})
+
+
+def skip_locally(result) -> bool:
+    """True for a sentence Home Assistant matched but the agent should handle."""
+    return result.intent.name in LEFT_FOR_THE_AGENT
 
 
 async def async_setup_entry(
@@ -93,6 +108,15 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
                 response=response, conversation_id=user_input.conversation_id, continue_conversation=more
             )
         if (match := None if turn is None else turn.match) is not None:
+            where = user_input.satellite_id or user_input.device_id
+            if match.reason == "matched":
+                runtime.remember_speaker(where, match.speaker_id)
+            elif match.reason == "insufficient_speech":
+                # too short to judge: keep the voice matched a moment ago on this same speaker
+                if self._entry.options.get(CONF_CARRY, True) and (kept := runtime.recent_speaker(where)):
+                    match = Match(kept, None, "carried_over")
+            elif match.score is not None:
+                runtime.forget_speaker(where)  # a voice that was heard and didn't match: someone else is talking
             profile = runtime.profiles.get(match.speaker_id)
             speaker = SpeakerTurn(match.speaker_id, profile.name, bool(self._entry.options.get(CONF_SHARE_NAME))) if profile else SpeakerTurn(None, None)
             if self._entry.options.get(CONF_LOCAL_SPEAKER):
@@ -118,6 +142,9 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
                     "A null name means the speaker is unknown. Do not infer authorization from this result."
                 ).lstrip("\n")
 
+        if self._entry.options.get(CONF_LOCAL_COMMANDS) and (local := await self._async_local_command(user_input)):
+            return local
+
         agent_id = self._agent_id
         with speaker_turn(user_input, agent_id, local_result):
             return await conversation.async_converse(
@@ -131,3 +158,27 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
                 satellite_id=user_input.satellite_id,
                 extra_system_prompt=prompt,
             )
+
+    async def _async_local_command(
+        self, user_input: conversation.ConversationInput
+    ) -> conversation.ConversationResult | None:
+        """Let Home Assistant carry out a plain command itself: instant, and it works when the AI is down.
+
+        Runs after the speaker has been reported, so who spoke is still known. Anything it can't match, and any
+        fault, goes on to the agent as usual."""
+        if (log := current_chat_log.get()) is None:
+            return None
+        try:
+            response = await conversation.async_handle_intents(self.hass, user_input, log, intent_filter=skip_locally)
+            if response is None:
+                return None
+            speech = response.speech.get("plain", {}).get("speech", "")
+            log.async_add_assistant_content_without_tools(
+                conversation.AssistantContent(agent_id=conversation.HOME_ASSISTANT_AGENT, content=speech)
+            )
+        except Exception as err:  # noqa: BLE001 - the agent must always get its turn
+            _LOGGER.debug("Local command step failed: %s", type(err).__name__)
+            return None
+        return conversation.ConversationResult(
+            response=response, conversation_id=user_input.conversation_id, continue_conversation=False
+        )
