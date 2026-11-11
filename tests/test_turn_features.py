@@ -63,7 +63,8 @@ async def run(agent, request, local=None):
     with patch.object(VoiceRecognitionAgent, "_agent", new_callable=PropertyMock, return_value=object()), \
             patch("homeassistant.components.conversation.async_converse", new=AsyncMock(return_value="from the agent")) as forward, \
             patch("homeassistant.components.conversation.async_handle_intents", new=AsyncMock(return_value=reply)) as intents, \
-            patch("custom_components.sentient_voice_recognition.conversation.current_chat_log") as log:
+            patch("custom_components.sentient_voice_recognition.conversation.async_get_chat_log") as opened:
+        log = opened.return_value.__enter__.return_value
         result = await agent.async_process(request)
     return result, forward, intents, log
 
@@ -79,9 +80,9 @@ async def test_a_local_command_is_answered_at_once_and_the_speaker_is_still_repo
     await hass.async_block_till_done()
     forward.assert_not_called()
     assert result.response.speech["plain"]["speech"] == "Turned on the light"
-    assert not result.continue_conversation and result.conversation_id == "c"
+    assert not result.continue_conversation and result.conversation_id
     assert events[0].data["speaker_name"] == "Alex" and events[0].data["reason"] == "matched"
-    log.get.return_value.async_add_assistant_content_without_tools.assert_called_once()  # so streaming speakers say it
+    log.async_add_assistant_content_without_tools.assert_called_once()  # so streaming speakers say it
 
 
 async def test_anything_home_assistant_cannot_do_itself_still_goes_to_the_agent(hass, runtime):

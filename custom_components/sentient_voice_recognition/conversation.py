@@ -5,7 +5,8 @@ import json
 import logging
 
 from homeassistant.components import conversation
-from homeassistant.components.conversation.chat_log import current_chat_log
+from homeassistant.components.conversation.chat_log import async_get_chat_log
+from homeassistant.helpers.chat_session import async_get_chat_session
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -166,19 +167,25 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
 
         Runs after the speaker has been reported, so who spoke is still known. Anything it can't match, and any
         fault, goes on to the agent as usual."""
-        if (log := current_chat_log.get()) is None:
-            return None
         try:
-            response = await conversation.async_handle_intents(self.hass, user_input, log, intent_filter=skip_locally)
-            if response is None:
-                return None
-            speech = response.speech.get("plain", {}).get("speech", "")
-            log.async_add_assistant_content_without_tools(
-                conversation.AssistantContent(agent_id=conversation.HOME_ASSISTANT_AGENT, content=speech)
-            )
+            # A pipeline has already opened this conversation's chat log; anything else gets one here.
+            with (
+                async_get_chat_session(self.hass, user_input.conversation_id) as session,
+                async_get_chat_log(self.hass, session, user_input) as log,
+            ):
+                response = await conversation.async_handle_intents(
+                    self.hass, user_input, log, intent_filter=skip_locally
+                )
+                if response is None:
+                    return None
+                speech = response.speech.get("plain", {}).get("speech", "")
+                log.async_add_assistant_content_without_tools(
+                    conversation.AssistantContent(agent_id=conversation.HOME_ASSISTANT_AGENT, content=speech)
+                )
+                conversation_id = session.conversation_id
         except Exception as err:  # noqa: BLE001 - the agent must always get its turn
-            _LOGGER.debug("Local command step failed: %s", type(err).__name__)
+            _LOGGER.warning("Local command step failed (%s); passing the request to the agent", type(err).__name__)
             return None
         return conversation.ConversationResult(
-            response=response, conversation_id=user_input.conversation_id, continue_conversation=False
+            response=response, conversation_id=conversation_id, continue_conversation=False
         )
