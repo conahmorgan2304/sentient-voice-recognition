@@ -28,8 +28,11 @@ from homeassistant.helpers.selector import (
 import probatio
 
 from .const import (
+    CONF_ADAPT,
     CONF_AGENT,
+    CONF_CARRY,
     CONF_ENGINE_INSTALL,
+    CONF_LOCAL_COMMANDS,
     CONF_LOCAL_SPEAKER,
     CONF_SHARE_NAME,
     CONF_STT,
@@ -89,6 +92,9 @@ def _settings(
         ),
         probatio.Required(CONF_LOCAL_SPEAKER, default=False): bool,
         probatio.Required(CONF_SHARE_NAME, default=False): bool,
+        probatio.Required(CONF_LOCAL_COMMANDS, default=False): bool,
+        probatio.Required(CONF_CARRY, default=True): bool,
+        probatio.Required(CONF_ADAPT, default=False): bool,
     }
     default_install = ENGINE_INSTALL_LOCAL if reconfigure else ENGINE_INSTALL_REPOSITORY
     fields[probatio.Required(

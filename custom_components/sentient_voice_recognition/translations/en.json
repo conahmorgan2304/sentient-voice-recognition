@@ -11,13 +11,19 @@
           "local_speaker": "Let Sentient identify speakers locally",
           "share_name": "Share matched names with the conversation agent",
           "engine_token": "Sentient Voice Engine token",
-          "engine_install": "Voice Engine installation"
+          "engine_install": "Voice Engine installation",
+          "local_commands": "Let Home Assistant handle plain commands itself",
+          "carry_speaker": "Keep a match for short follow-ups",
+          "adaptive_profiles": "Learn from strong matches"
         },
         "data_description": {
           "match_threshold": "Start at 0.65. Higher values give more unknown results and fewer tentative matches.",
           "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
           "share_name": "Allows the conversation agent to receive the matched name for personalisation and automatic memory attribution. A cloud AI model can receive the name.",
-          "engine_install": "Choose where you installed the Sentient Voice Engine app."
+          "engine_install": "Choose where you installed the Sentient Voice Engine app.",
+          "local_commands": "Simple commands such as turning a light on are carried out by Home Assistant at once, without the conversation agent, and still work when the AI service is down. Who spoke is still reported. Questions and anything else go to the agent. Keep Prefer handling commands locally off in the Assist pipeline.",
+          "carry_speaker": "When a reply is too short to judge, such as yes or no, the voice matched in the last 90 seconds on that same speaker is kept. A voice that was heard and did not match is never given the earlier name.",
+          "adaptive_profiles": "A very confident match moves that person's profile slightly towards how they sound on that microphone. Lessons are spaced ten minutes apart and the profile always stays close to the recorded samples. Recording the samples again resets it. Turning this off stops further learning and keeps what was learned."
         }
       }
     },
@@ -50,13 +56,19 @@
           "local_speaker": "Let Sentient identify speakers locally",
           "share_name": "Share matched names with the conversation agent",
           "engine_token": "Sentient Voice Engine token",
-          "engine_install": "Voice Engine installation"
+          "engine_install": "Voice Engine installation",
+          "local_commands": "Let Home Assistant handle plain commands itself",
+          "carry_speaker": "Keep a match for short follow-ups",
+          "adaptive_profiles": "Learn from strong matches"
         },
         "data_description": {
           "local_speaker": "Lets Sentient answer who is speaking using the current match on Home Assistant. Turning this off stops the local handoff and keeps your profiles.",
           "share_name": "Allows the conversation agent to receive the matched name for personalisation and automatic memory attribution. A cloud AI model can receive the name.",
           "engine_token": "Leave blank to keep the saved engine token.",
-          "engine_install": "Choose where you installed the Sentient Voice Engine app."
+          "engine_install": "Choose where you installed the Sentient Voice Engine app.",
+          "local_commands": "Simple commands such as turning a light on are carried out by Home Assistant at once, without the conversation agent, and still work when the AI service is down. Who spoke is still reported. Questions and anything else go to the agent. Keep Prefer handling commands locally off in the Assist pipeline.",
+          "carry_speaker": "When a reply is too short to judge, such as yes or no, the voice matched in the last 90 seconds on that same speaker is kept. A voice that was heard and did not match is never given the earlier name.",
+          "adaptive_profiles": "A very confident match moves that person's profile slightly towards how they sound on that microphone. Lessons are spaced ten minutes apart and the profile always stays close to the recorded samples. Recording the samples again resets it. Turning this off stops further learning and keeps what was learned."
         }
       },
       "enroll": {

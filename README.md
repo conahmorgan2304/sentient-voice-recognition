@@ -12,7 +12,7 @@ This build targets Home Assistant Core **2026.11.0** and the Home Assistant OS S
 2. Open **Sentient Voice Engine** in the app store and select **Install**. Home Assistant builds the app and verifies the downloaded model checksums.
 3. Open the app’s **Configuration** tab. Set `token` to a private random value of 24–128 letters, digits, hyphens or underscores. For example, generate your own with `openssl rand -hex 24`. Save the setting and start the app.
 4. In **HACS → Custom repositories**, add [the same URL](https://github.com/conahmorgan2304/sentient-voice-recognition) with category **Integration**. Download **Sentient Voice Recognition** and restart Home Assistant.
-5. Open **Settings → Devices & services → Add integration → Sentient Voice Recognition**. Choose **GitHub app repository** and enter the same token. Select your current speech-to-text provider and your current **Sentient** or **Jarvis with backup** conversation agent. Enable **Let Sentient identify speakers locally** if you want to ask who is speaking.
+5. Open **Settings → Devices & services → Add integration → Sentient Voice Recognition**. Choose **GitHub app repository** and enter the same token. Select your current speech-to-text provider and your current **Sentient** conversation agent (the one named after your assistant, usually ending **with backup**). Enable **Let Sentient identify speakers locally** if you want to ask who is speaking.
 6. Create a test voice assistant under **Settings → Voice assistants** and assign it to one ESPHome speaker. Use your existing wake word and the settings below.
 
 | Assist setting | Value |
@@ -20,8 +20,8 @@ This build targets Home Assistant Core **2026.11.0** and the Home Assistant OS S
 | Speech-to-text | **Sentient Voice Recognition STT** |
 | Conversation agent | **Sentient Voice Recognition** |
 | Text-to-speech | The TTS you already use, with its current voice |
-| Wake word | Your current wake word, such as **Hey Jarvis** |
-| Prefer handling commands locally | Off on the test pipeline, so commands reach the Voice Recognition conversation adapter |
+| Wake word | Your current wake word |
+| Prefer handling commands locally | Off, so every request reaches the Voice Recognition conversation adapter. Turn on **Let Home Assistant handle plain commands itself** in Voice Recognition instead (see Optional settings) |
 
 If you want to revert the test, assign the original Assist pipeline back to the speaker. You can remove Voice Recognition after moving all devices off its adapters.
 
@@ -68,12 +68,22 @@ A WAV test uses the same matcher as Assist and keeps the result inside the setti
 1. In **Developer tools → Events**, listen for `sentient_voice_recognition_turn`.
 2. Have an enrolled person ask a longer question using the test speaker. The event shows the speaker name and similarity when matched.
 3. Ask an unenrolled person to use the same speaker. Check that the result returns a null speaker and that Sentient still answers.
-4. Try a short command and then a longer question. Each utterance is assessed independently. A short turn can be unknown even if the previous turn matched.
+4. Try a short command and then a longer question. Each utterance is assessed independently. A turn too short to judge keeps the voice matched in the last 90 seconds on that speaker (reason `carried_over`) unless you turn **Keep a match for short follow-ups** off.
 5. Stop the Voice Engine app briefly and speak again. The pipeline should keep transcribing and answering while the event reports that the engine is unavailable. Restart the app after the check.
 
 The event contains `speaker_id`, `speaker_name`, `similarity`, `runner_up_gap`, `reason`, `device_id`, and `satellite_id` when available. The similarity is a model score. The defaults require at least **0.65** similarity and a **0.10** lead over the next enrolled profile. Raise the threshold in **Configure → Voice pipeline and matching settings** if another speaker is assigned the wrong name. If Home Assistant bypasses the conversation adapter through a sentence trigger or its local intent shortcut, that turn has no Voice Recognition event.
 
 Speaker inference and voice templates stay on your Home Assistant system. Your existing cloud STT or TTS providers keep their existing data flows. When name sharing is enabled, the selected Sentient conversation agent can include the display name in a request to its configured cloud model. Name sharing is off initially.
+
+## Optional settings
+
+All three are under **Configure → Voice pipeline and matching settings**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Let Home Assistant handle plain commands itself | Off | Simple commands such as turning a light on are carried out by Home Assistant at once, without the conversation agent, and still work when the AI service is down. The speaker is still reported in the turn event. Questions, media searches and conversational replies go to the agent. |
+| Keep a match for short follow-ups | On | A reply too short to judge, such as “yes”, keeps the voice matched in the last 90 seconds on that same speaker. A voice that was heard and did not match is never given the earlier name. Nothing is stored. |
+| Learn from strong matches | Off | A very confident match (at least 0.75, at least 0.10 above your match level and 0.20 ahead of any other profile) moves that profile slightly towards how the person sounds on that microphone. Lessons are at least ten minutes apart, and a profile never drifts further than 0.90 similarity from its recorded samples. Recording the samples again resets it. Turning the setting off stops further learning and keeps what was learned. |
 
 ## Ask Sentient who is speaking
 
