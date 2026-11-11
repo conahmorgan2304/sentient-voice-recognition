@@ -34,3 +34,30 @@ async def test_a_real_local_sentence_is_answered_without_a_pipeline_chat_log(has
 
 async def test_a_real_question_home_assistant_cannot_match_goes_to_the_agent(hass):
     assert await _ask(hass, "what should I cook for six people tonight") == "AGENT"
+
+
+async def test_the_chat_session_is_opened_with_the_requests_own_context(hass):
+    """Home Assistant 2026.11 reports a chat session opened without a context; it stops working in 2027.5."""
+    from contextlib import contextmanager
+
+    from custom_components.sentient_voice_recognition import conversation as module
+    from homeassistant.helpers.chat_session import async_get_chat_session as real
+
+    seen = []
+
+    @contextmanager
+    def spy(hass_, conversation_id=None, *, context=None):
+        seen.append(context)
+        with real(hass_, conversation_id) as session:
+            yield session
+
+    with patch.object(module, "async_get_chat_session", spy), patch.object(module, "_SESSION_TAKES_CONTEXT", True):
+        result = await _ask(hass, "what time is it")
+    assert result != "AGENT" and len(seen) == 1 and isinstance(seen[0], Context)
+
+
+def test_older_home_assistant_without_the_context_argument_still_works():
+    from custom_components.sentient_voice_recognition import conversation as module
+
+    with patch.object(module, "_SESSION_TAKES_CONTEXT", False):
+        assert module._session_context(SimpleNamespace(context=Context())) == {}

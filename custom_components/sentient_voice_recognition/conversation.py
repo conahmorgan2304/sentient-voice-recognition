@@ -1,5 +1,6 @@
 """Attach a same-turn speaker result and forward the request to Sentient."""
 
+import inspect
 import json
 
 import logging
@@ -39,6 +40,23 @@ async def async_setup_entry(
 ) -> None:
     """Register the conversation adapter."""
     async_add_entities([VoiceRecognitionAgent(entry)])
+
+
+
+def _takes_context() -> bool:
+    try:
+        return "context" in inspect.signature(async_get_chat_session).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+# Since 2026.11 a chat session opened without a context is reported, and it stops working in 2027.5: the context
+# decides who owns the conversation. The request's own context keeps the owner the voice pipeline gave it.
+_SESSION_TAKES_CONTEXT = _takes_context()
+
+
+def _session_context(user_input: conversation.ConversationInput) -> dict:
+    return {"context": user_input.context} if _SESSION_TAKES_CONTEXT else {}
 
 
 class VoiceRecognitionAgent(conversation.ConversationEntity):
@@ -170,7 +188,7 @@ class VoiceRecognitionAgent(conversation.ConversationEntity):
         try:
             # A pipeline has already opened this conversation's chat log; anything else gets one here.
             with (
-                async_get_chat_session(self.hass, user_input.conversation_id) as session,
+                async_get_chat_session(self.hass, user_input.conversation_id, **_session_context(user_input)) as session,
                 async_get_chat_log(self.hass, session, user_input) as log,
             ):
                 response = await conversation.async_handle_intents(
