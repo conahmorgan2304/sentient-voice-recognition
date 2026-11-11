@@ -231,3 +231,15 @@ async def test_an_engine_fault_while_learning_is_on_still_answers(runtime):
     runtime.adaptive = True
     runtime.engine.next = BadSample()
     assert (await runtime.async_recognize(b"\x01\x00" * 100, 0.65)).reason == "insufficient_speech"
+
+
+async def test_a_lesson_not_yet_written_is_saved_when_the_integration_closes(runtime):
+    runtime.adaptive = True
+    runtime.engine.next = vec(1.0, 0.5)
+    with patch.object(runtime._store, "async_delay_save"), patch.object(runtime._store, "async_save", new=AsyncMock()) as save:
+        await runtime.async_recognize(b"\x01\x00" * 100, 0.65)
+        await runtime.async_close()
+        save.assert_awaited_once()
+        assert save.await_args.args[0]["profiles"]["a1"]["anchor"] == list(ALEX)
+        await runtime.async_close()
+        save.assert_awaited_once()  # nothing new to write

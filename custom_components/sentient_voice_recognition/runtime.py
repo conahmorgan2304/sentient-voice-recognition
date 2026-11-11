@@ -124,6 +124,7 @@ class Runtime:
         self.adaptive = False
         self._recent: dict[str, tuple[str, float]] = {}
         self._learned_at: dict[str, float] = {}
+        self._unsaved_lesson = False
 
     async def async_load(self) -> None:
         """Load profiles created for the current speaker model."""
@@ -147,6 +148,7 @@ class Runtime:
     async def _async_save(self, profiles: dict[str, Profile]) -> None:
         await self._store.async_save(self._data(profiles))
         self.profiles = profiles
+        self._unsaved_lesson = False
 
     # ----- a match carried through a conversation ------------------------------------------------------------
     def remember_speaker(self, where: str | None, speaker_id: str) -> None:
@@ -192,12 +194,15 @@ class Runtime:
             return
         self._learned_at[match.speaker_id] = monotonic() + LEARN_EVERY
         self.profiles = {**self.profiles, match.speaker_id: Profile(profile.name, learned, anchor)}
+        self._unsaved_lesson = True
         self._store.async_delay_save(lambda: self._data(self.profiles), LEARN_SAVE_DELAY)
 
     async def async_close(self) -> None:
         """Finish any profile write before a new runtime loads the store."""
         async with self._edit_lock:
             self._closed = True
+            if self._unsaved_lesson:  # write it now, so a later reload can't bring back older profiles
+                await self._async_save(self.profiles)
             self.cancel_satellite_enrollment()
 
     def _check_open(self) -> None:
